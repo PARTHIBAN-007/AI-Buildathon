@@ -2,10 +2,8 @@ from pydantic import AliasChoices, Field
 from functools import lru_cache
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
-import typing
 
 load_dotenv()
-
 
 class Settings(BaseSettings):
     EXOTEL_BASE_URL: str = Field(..., env="EXOTEL_BASE_URL")
@@ -15,11 +13,16 @@ class Settings(BaseSettings):
     EXOTEL_PHONE_NUMBER: str = Field(..., env="EXOTEL_PHONE_NUMBER")
 
     SARVAM_API_KEY: str = Field(..., env="SARVAM_API_KEY")
-    SARVAM_BASE_URL: str = Field("https://api.sarvam.example", env="SARVAM_BASE_URL")
 
-    META_WHATSAPP_TOKEN: typing.Optional[str] = Field(None)
-    META_WHATSAPP_PHONE_ID: typing.Optional[str] = Field(None)
-    VERIFY_TOKEN: typing.Optional[str] = Field(None)
+    RAZORPAY_API_KEY: str = Field(..., env = "RAZORPAY_API_KEY")
+    RAZORPAY_KEY_SECRET: str = Field(..., env = "RAZORPAY_KEY_SECRET")
+    RAZORPAY_WEBHOOK_SECRET: str = Field(..., env = "RAZORPAY_WEBHOOK_SECRET")
+
+    META_APP_ID: str = Field(..., env = "META_APP_ID")
+    META_ACCESS_TOKEN: str = Field(..., env = "META_ACCESS_TOKEN")
+    META_VERIFY_TOKEN: str = Field(..., env = "META_VERIFY_TOKEN")
+    META_APP_SECRET: str = Field(..., env = "META_APP_SECRET")
+    META_BUSINESS_ID: str = Field(..., env = "META_BUSINESS_ID")
 
     class Config:
         env_file = ".env"

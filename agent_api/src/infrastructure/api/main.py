@@ -1,4 +1,5 @@
-import logging
+from loguru import logger
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -7,10 +8,10 @@ from pydantic import BaseModel
 from src.application.voice_agent import VoiceAgentService, VoiceCallRequest
 from src.application.whatsapp import WhatsAppService, WhatsAppMessageRequest
 from src.application.whatsapp_webhook import WhatsAppWebhookHandler
-from src.config import settings
+from src.config import get_settings
 
-logging.basicConfig(level=getattr(logging, settings.__dict__.get('LOG_LEVEL', 'INFO')))
-logger = logging.getLogger(__name__)
+settings = get_settings()
+
 
 app = FastAPI(
     title="Agent_API",

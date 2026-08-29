@@ -4,113 +4,135 @@ import './App.css'
 const products = [
   {
     id: 1,
-    name: 'PlayStation 5',
-    brand: 'Sony',
-    price: 54999,
-    description: 'Ultra-fast SSD performance with cinematic visuals for immersive gameplay.',
-    badge: 'Best Seller',
-    accent: 'bg-[#efe1d5]',
-    image:
-      'https://images.unsplash.com/photo-1606813907291-d86efa9b94db?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 2,
-    name: 'Xbox Series X',
-    brand: 'Microsoft',
-    price: 49999,
-    description: 'High-fidelity gaming with seamless compatibility and premium speed.',
-    badge: 'New Arrival',
-    accent: 'bg-[#e7d9c8]',
-    image:
-      'https://images.unsplash.com/photo-1621259182978-f8f2c1d92c7a?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 3,
-    name: 'Nintendo Switch OLED',
-    brand: 'Nintendo',
-    price: 31999,
-    description: 'Portable flexibility and vibrant visuals for casual and competitive play.',
-    badge: 'Popular',
-    accent: 'bg-[#f1e6dc]',
-    image:
-      'https://images.unsplash.com/photo-1578303512597-81e6cc155b3e?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 4,
-    name: 'PS5 Digital Edition',
-    brand: 'Sony',
-    price: 44999,
-    description: 'A streamlined digital-first console built for modern game libraries.',
-    badge: 'Limited',
-    accent: 'bg-[#eadbc6]',
-    image:
-      'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?auto=format&fit=crop&w=900&q=80',
-  },
-  {
-    id: 5,
-    name: '4K Gaming Monitor',
-    brand: 'Acer',
-    price: 18999,
-    description: 'Smooth visuals and sharp detail for competitive and cinematic gaming.',
-    badge: 'Value Pick',
-    accent: 'bg-[#f3e6d8]',
+    name: 'UltraWide 4K Monitor',
+    brand: 'Dell',
+    price: 28999,
+    description: 'Crisp 4K clarity and wide-screen productivity for creators, coders, and gamers.',
+    badge: 'Editor Pick',
+    accent: 'bg-[#f3e5d6]',
     image:
       'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=900&q=80',
   },
   {
-    id: 6,
-    name: 'RGB Mechanical Keyboard',
+    id: 2,
+    name: 'Mechanical Keyboard Pro',
     brand: 'Redragon',
     price: 5999,
-    description: 'Responsive key switches and tactile feedback for intense gaming sessions.',
+    description: 'Fast switches, tactile feedback, and an elevated desk setup for work and play.',
     badge: 'Hot Deal',
-    accent: 'bg-[#eadcc5]',
+    accent: 'bg-[#efe1d5]',
     image:
       'https://images.unsplash.com/photo-1511467687858-23d96c32e4ae?auto=format&fit=crop&w=900&q=80',
   },
   {
-    id: 7,
-    name: 'Gaming Mouse',
+    id: 3,
+    name: 'Gaming Mouse X',
     brand: 'Logitech',
     price: 3999,
-    description: 'Precision control and ergonomic comfort for fast-paced gameplay.',
+    description: 'Precision tracking and ergonomic comfort built for competitive motion control.',
     badge: 'Top Rated',
-    accent: 'bg-[#f0e3d7]',
+    accent: 'bg-[#e8d7c7]',
     image:
       'https://images.unsplash.com/photo-1563294328-23b5acefa4f8?auto=format&fit=crop&w=900&q=80',
   },
   {
-    id: 8,
-    name: 'Wireless Noise Cancelling Headphones',
+    id: 4,
+    name: 'Noise Cancelling Headset',
     brand: 'Sony',
     price: 12999,
-    description: 'Deep immersion with comfort-first design for long gaming and work sessions.',
+    description: 'Immersive audio with comfort-first design for travel, calls, and focused sessions.',
     badge: 'Popular',
-    accent: 'bg-[#ecdfd3]',
+    accent: 'bg-[#f0e4d8]',
     image:
       'https://images.unsplash.com/photo-1546435770-a3e426bf472b?auto=format&fit=crop&w=900&q=80',
   },
   {
-    id: 9,
+    id: 5,
+    name: 'USB-C Hub + Dock',
+    brand: 'Anker',
+    price: 4999,
+    description: 'Expand your desk with multiple ports for charging, transferring, and streaming.',
+    badge: 'Desk Essential',
+    accent: 'bg-[#e9d8c8]',
+    image:
+      'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 6,
     name: 'AirPods Pro',
     brand: 'Apple',
     price: 19999,
-    description: 'Wireless audio with adaptive noise control for calls, music, and gaming.',
+    description: 'Adaptive audio, crisp calls, and all-day comfort for commuting and focus.',
     badge: 'Premium',
     accent: 'bg-[#f5e7d7]',
     image:
       'https://images.unsplash.com/photo-1606220588913-b3aacb4d2f46?auto=format&fit=crop&w=900&q=80',
   },
   {
-    id: 10,
-    name: 'USB-C Hub + Dock',
-    brand: 'Anker',
-    price: 4999,
-    description: 'Expand productivity with multi-port connectivity for desktop setups.',
-    badge: 'Desk Essential',
-    accent: 'bg-[#e9d8c8]',
+    id: 7,
+    name: 'RGB Desk Lamp',
+    brand: 'BenQ',
+    price: 6999,
+    description: 'Elegant ambient light with adjustable brightness for late-night work and gaming.',
+    badge: 'Smart Setup',
+    accent: 'bg-[#ebdfd4]',
     image:
-      'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 8,
+    name: '4K Streaming Stick',
+    brand: 'Google',
+    price: 4999,
+    description: 'Turn any screen into a smart entertainment hub with instant high-quality streaming.',
+    badge: 'Home Tech',
+    accent: 'bg-[#f3e6d9]',
+    image:
+      'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 9,
+    name: 'PlayStation 5',
+    brand: 'Sony',
+    price: 54999,
+    description: 'Ultra-fast SSD and cinematic visuals for immersive next-gen gaming sessions.',
+    badge: 'Best Seller',
+    accent: 'bg-[#efe1d5]',
+    image:
+      'https://images.unsplash.com/photo-1606813907291-d86efa9b94db?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 10,
+    name: 'Xbox Series X',
+    brand: 'Microsoft',
+    price: 49999,
+    description: 'High-fidelity gaming performance with seamless compatibility and premium speed.',
+    badge: 'New Arrival',
+    accent: 'bg-[#e7d9c8]',
+    image:
+      'https://images.unsplash.com/photo-1621259182978-f8f2c1d92c7a?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 11,
+    name: 'Nintendo Switch OLED',
+    brand: 'Nintendo',
+    price: 31999,
+    description: 'Portable versatility and vibrant visuals for everyday gaming anywhere.',
+    badge: 'Popular',
+    accent: 'bg-[#f1e6dc]',
+    image:
+      'https://images.unsplash.com/photo-1578303512597-81e6cc155b3e?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    id: 12,
+    name: 'PS5 Digital Edition',
+    brand: 'Sony',
+    price: 44999,
+    description: 'A streamlined digital-first console designed for a modern gaming library.',
+    badge: 'Limited',
+    accent: 'bg-[#eadbc6]',
+    image:
+      'https://images.unsplash.com/photo-1606144042614-b2417e99c4e3?auto=format&fit=crop&w=900&q=80',
   },
 ]
 
@@ -120,8 +142,9 @@ function App() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    address: '',
   })
+  const [checkoutLoading, setCheckoutLoading] = useState(false)
+  const [checkoutError, setCheckoutError] = useState(null)
 
   const addToCart = (product) => {
     setCart((currentCart) => {
@@ -152,14 +175,114 @@ function App() {
     [cart],
   )
 
-  const handleCheckout = (event) => {
+  const handleCheckout = async (event) => {
     event.preventDefault()
     if (!cart.length) return
 
-    alert(`Thanks ${formData.name || 'Gamer'}! Your order for ₹${total.toLocaleString('en-IN')} is confirmed.`)
-    setCart([])
-    setShowCheckout(false)
-    setFormData({ name: '', email: '', address: '' })
+    setCheckoutError(null)
+    setCheckoutLoading(true)
+
+    try {
+      const amount = total + 399 + 299
+      const payload = { amount_in_inr: Math.round(amount) }
+
+      const res = await fetch('http://localhost:8000/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        const text = (json && json.detail) || (json && json.message) || (await res.text())
+        throw new Error(text || 'Payment API error')
+      }
+
+      const data = await res.json()
+
+      // Load Razorpay SDK
+      const loadRazorpay = () =>
+        new Promise((resolve) => {
+          if (window.Razorpay) return resolve(true)
+          const script = document.createElement('script')
+          script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+          script.onload = () => resolve(true)
+          script.onerror = () => resolve(false)
+          document.body.appendChild(script)
+        })
+
+      const ok = await loadRazorpay()
+      if (!ok) throw new Error('Failed to load Razorpay SDK')
+
+      const options = {
+        key: data.key_id || '',
+        amount: data.amount || payload.amount_in_inr * 100,
+        currency: 'INR',
+        name: 'Gadgets Shop',
+        description: 'Purchase from Gadgets store',
+        order_id: data.order_id,
+        prefill: { name: formData.name, email: formData.email },
+        handler: async function (response) {
+          // response contains razorpay_payment_id, razorpay_order_id, razorpay_signature
+          try {
+            const verifyRes = await fetch('http://localhost:8000/verify-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(response),
+            })
+
+            if (!verifyRes.ok) {
+              const errJson = await verifyRes.json().catch(() => null)
+              const errText = (errJson && errJson.detail) || (await verifyRes.text())
+              throw new Error(errText || 'Verification failed')
+            }
+
+            const verifyData = await verifyRes.json()
+            if (verifyData.verified) {
+              alert('Payment successful and verified. Thank you!')
+              setCart([])
+              setShowCheckout(false)
+              setFormData({ name: '', email: '' })
+            } else {
+              throw new Error('Payment could not be verified')
+            }
+          } catch (err) {
+            console.error('Verification error', err)
+            setCheckoutError(err.message || String(err))
+            alert(`Payment verification failed: ${err.message || err}`)
+          }
+        },
+        theme: { color: '#3f2c24' },
+      }
+
+      const rzp = new window.Razorpay(options)
+      rzp.on('payment.failed', function (resp) {
+        console.error('Payment failed', resp)
+        setCheckoutError(resp.error && resp.error.description ? resp.error.description : 'Payment failed')
+        alert(`Payment failed: ${resp.error && resp.error.description ? resp.error.description : 'Unknown error'}`)
+
+        // Report payment failure to backend for logging/analysis
+        ;(async () => {
+          try {
+            await fetch('http://localhost:8000/payment-failed', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(resp),
+            })
+          } catch (err) {
+            console.error('Failed to report payment failure to backend', err)
+          }
+        })()
+      })
+
+      rzp.open()
+    } catch (err) {
+      console.error('Checkout error', err)
+      setCheckoutError(err.message || String(err))
+      alert(`Payment failed: ${err.message || err}`)
+    } finally {
+      setCheckoutLoading(false)
+    }
   }
 
   return (
@@ -202,10 +325,10 @@ function App() {
                 New Arrivals
               </span>
               <h2 className="mt-5 max-w-xl text-4xl font-bold tracking-[-0.04em] text-[#221b18] md:text-5xl">
-                Smart tech for gaming, work, and everyday setup.
+                Tech gadgets first, then gaming essentials for work and play.
               </h2>
               <p className="mt-4 max-w-xl text-base leading-7 text-[#54453e] md:text-lg">
-                Explore gaming consoles, desktop accessories, headphones, earbuds, and premium tech essentials built for productivity and play.
+                Discover premium tech gear, productivity devices, and lifestyle upgrades before our flagship gaming collection.
               </p>
 
               <div className="mt-7 flex flex-wrap items-center gap-4">
@@ -256,10 +379,10 @@ function App() {
           <div className="mb-6 flex items-end justify-between gap-4">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#7e5b45]">Featured collection</p>
-              <h3 className="mt-2 text-3xl font-bold text-[#221b18]">Tech gadgets & gaming essentials</h3>
+              <h3 className="mt-2 text-3xl font-bold text-[#221b18]">Tech gadgets first, gaming products next</h3>
             </div>
             <span className="rounded-full border border-[#dfd0bd] bg-[#f8f3ee] px-3 py-1 text-sm text-[#5b463d]">
-              10 essentials
+              12 essentials
             </span>
           </div>
 
@@ -384,94 +507,105 @@ function App() {
         </section>
 
         {showCheckout && (
-          <section className="mt-10 rounded-[2rem] border border-[#e3d8c9] bg-[#fffdfb] p-6 shadow-[0_24px_40px_rgba(69,58,49,0.05)]">
-            <div className="mb-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#7e5b45]">Checkout</p>
-              <h3 className="mt-2 text-3xl font-bold text-[#221b18]">Complete your purchase</h3>
-            </div>
-
-            <form onSubmit={handleCheckout} className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
-              <div className="space-y-4">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-[#554a46]">Full name</span>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(event) => setFormData({ ...formData, name: event.target.value })}
-                    required
-                    className="w-full rounded-2xl border border-[#dbc8b0] bg-[#f7f1ea] px-4 py-3 text-[#221b18] outline-none placeholder:text-[#89766b] focus:border-[#8b6552]"
-                    placeholder="John Doe"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-[#554a46]">Email</span>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(event) => setFormData({ ...formData, email: event.target.value })}
-                    required
-                    className="w-full rounded-2xl border border-[#dbc8b0] bg-[#f7f1ea] px-4 py-3 text-[#221b18] outline-none placeholder:text-[#89766b] focus:border-[#8b6552]"
-                    placeholder="john@example.com"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-2 block text-sm font-medium text-[#554a46]">Shipping address</span>
-                  <textarea
-                    value={formData.address}
-                    onChange={(event) => setFormData({ ...formData, address: event.target.value })}
-                    required
-                    rows="4"
-                    className="w-full rounded-2xl border border-[#dbc8b0] bg-[#f7f1ea] px-4 py-3 text-[#221b18] outline-none placeholder:text-[#89766b] focus:border-[#8b6552]"
-                    placeholder="123 Game Street, New York, NY"
-                  />
-                </label>
-              </div>
-
-              <div className="rounded-2xl border border-[#dbc8b0] bg-[#f7f1ea] p-5">
-                <h4 className="text-xl font-semibold text-[#221b18]">Payment</h4>
-                <div className="mt-4 space-y-3 text-sm text-[#554a46]">
-                  {cart.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between">
-                      <span>
-                        {item.name} x {item.quantity}
-                      </span>
-                      <span>₹{(item.price * item.quantity).toLocaleString('en-IN')}</span>
-                    </div>
-                  ))}
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a120e]/50 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-3xl rounded-[2rem] border border-[#e7d8c7] bg-[#fffdfb] p-6 shadow-[0_32px_80px_rgba(38,28,23,0.24)]">
+              <div className="mb-6 flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#7e5b45]">Checkout</p>
+                  <h3 className="mt-2 text-3xl font-bold text-[#221b18]">Complete your purchase</h3>
                 </div>
-
-                <div className="mt-5 space-y-3 border-t border-[#d6bda1] pt-4 text-sm text-[#554a46]">
-                  <div className="flex justify-between">
-                    <span>Subtotal</span>
-                    <span>₹{total.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Shipping</span>
-                    <span>{total > 0 ? '₹399' : '₹0'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Tax</span>
-                    <span>{total > 0 ? '₹299' : '₹0'}</span>
-                  </div>
-                </div>
-
-                <div className="mt-5 flex items-center justify-between border-t border-[#d6bda1] pt-4 text-lg font-bold text-[#221b18]">
-                  <span>Total</span>
-                  <span>₹{total > 0 ? (total + 399 + 299).toLocaleString('en-IN') : 0}</span>
-                </div>
-
                 <button
-                  type="submit"
-                  disabled={!cart.length}
-                  className="mt-6 w-full rounded-full bg-[#3f2c24] px-4 py-3 text-sm font-semibold text-[#f7f2ed] transition hover:bg-[#2d201d] disabled:cursor-not-allowed disabled:bg-[#d6c6b8] disabled:text-[#877664]"
+                  type="button"
+                  onClick={() => setShowCheckout(false)}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f2e6d8] text-xl text-[#3f2c24] transition hover:bg-[#ead5bb]"
+                  aria-label="Close checkout"
                 >
-                  Confirm Order
+                  ×
                 </button>
               </div>
-            </form>
-          </section>
+
+              <form onSubmit={handleCheckout} className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
+                <div className="space-y-4 rounded-[1.5rem] border border-[#ebdfd3] bg-[#f9f3ee] p-5">
+                  <div>
+                    <p className="mb-2 text-sm font-semibold uppercase tracking-[0.2em] text-[#7c5a48]">Customer</p>
+                    <label className="block">
+                      <span className="mb-2 block text-sm font-medium text-[#554a46]">Full name</span>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                        required
+                        className="w-full rounded-2xl border border-[#dbc8b0] bg-white px-4 py-3 text-[#221b18] outline-none placeholder:text-[#89766b] focus:border-[#8b6552]"
+                        placeholder="John Doe"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-medium text-[#554a46]">Email</span>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(event) => setFormData({ ...formData, email: event.target.value })}
+                      required
+                      className="w-full rounded-2xl border border-[#dbc8b0] bg-white px-4 py-3 text-[#221b18] outline-none placeholder:text-[#89766b] focus:border-[#8b6552]"
+                      placeholder="john@example.com"
+                    />
+                  </label>
+
+                  <div className="rounded-2xl border border-dashed border-[#d9c8b6] bg-[#f4ece5] p-4 text-sm text-[#5d4d45]">
+                    Address details will be added later. For now, we only need your name and email.
+                  </div>
+                </div>
+
+                <div className="rounded-[1.5rem] border border-[#dbc8b0] bg-[#f7f1ea] p-5">
+                  <h4 className="text-xl font-semibold text-[#221b18]">Payment</h4>
+                  <div className="mt-4 space-y-3 text-sm text-[#554a46]">
+                    {cart.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between">
+                        <span>
+                          {item.name} x {item.quantity}
+                        </span>
+                        <span>₹{(item.price * item.quantity).toLocaleString('en-IN')}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 space-y-3 border-t border-[#d6bda1] pt-4 text-sm text-[#554a46]">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span>₹{total.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Shipping</span>
+                      <span>{total > 0 ? '₹399' : '₹0'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Tax</span>
+                      <span>{total > 0 ? '₹299' : '₹0'}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-between border-t border-[#d6bda1] pt-4 text-lg font-bold text-[#221b18]">
+                    <span>Total</span>
+                    <span>₹{total > 0 ? (total + 399 + 299).toLocaleString('en-IN') : 0}</span>
+                  </div>
+
+                  {checkoutError && (
+                    <div className="mt-3 text-sm text-red-600">Error: {checkoutError}</div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={!cart.length || checkoutLoading}
+                    className="mt-6 w-full rounded-full bg-[#3f2c24] px-4 py-3 text-sm font-semibold text-[#f7f2ed] transition hover:bg-[#2d201d] disabled:cursor-not-allowed disabled:bg-[#d6c6b8] disabled:text-[#877664]"
+                  >
+                    {checkoutLoading ? 'Processing...' : 'Confirm Order'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
         )}
       </main>
     </div>
