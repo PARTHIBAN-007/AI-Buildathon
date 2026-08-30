@@ -12,4 +12,6 @@ dependencies = [
     "pydantic-settings>=1.0.0",
     "langchain-core>=1.6.1",
     "langgraph>=1.2.11",
+    "loguru>=0.7.3",
+    "razorpay>=2.0.1",
 ]
