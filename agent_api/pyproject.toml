@@ -15,3 +15,6 @@ dependencies = [
     "loguru>=0.7.3",
     "razorpay>=2.0.1",
 ]
+
+[tool.fastapi]
+    entrypoint = "src.api.main:app"

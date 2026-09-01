@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request, HTTPException
 from loguru import logger
 
 from src.config import get_settings
-from src.services.recovery_service import handle_razorpay_webhook
+from src.application.recovery_service import handle_razorpay_webhook
 
 router = APIRouter()
 
@@ -14,6 +14,7 @@ async def razorpay_webhook(request: Request):
     settings = get_settings()
     raw = await request.body()
     signature = request.headers.get("x-razorpay-signature", "")
+    logger.info("Received Razorpay webhook with signature: {}", signature)
 
     try:
         payload = await request.json()

@@ -14,27 +14,27 @@ voice = VoiceService()
 
 
 async def send_whatsapp_message(thread_id: str, text: str, buttons: list | None = None) -> dict:
-    logger.info("Tool: send_whatsapp_message to %s", thread_id)
+    logger.info(f"Tool: send_whatsapp_message to {thread_id}")
     # buttons are provider-specific; convert to template components at call site if needed
     return await whatsapp.send_text_message(to=thread_id, body=text)
 
 
 async def generate_discounted_payment_link(thread_id: str, amount_in_inr: int, discount_pct: float = 0.0) -> dict:
-    logger.info("Tool: generate_discounted_payment_link for %s discount=%s", thread_id, discount_pct)
+    logger.info(f"Tool: generate_discounted_payment_link for {thread_id} discount={discount_pct}")
     if discount_pct < 0 or discount_pct > 100:
         raise ValueError("discount_pct must be between 0 and 100")
-    discounted = max(1, int(amount_in_inr * (1 - discount_pct / 100.0)))
-    return await payment.create_payment_link(amount_in_inr=discounted, description=f"Discounted for {thread_id}")
+    discounted_amount = max(1, int(amount_in_inr * (1 - discount_pct / 100.0)))
+    return await payment.create_payment_link(amount_in_inr=discounted_amount, description=f"Discounted for {thread_id}")
 
 
 def schedule_voice_call(thread_id: str, eta_seconds: int = 7200) -> str:
-    logger.info("Tool: schedule_voice_call for %s in %ss", thread_id, eta_seconds)
+    logger.info(f"Tool: schedule_voice_call for {thread_id} in {eta_seconds}s")
     task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[thread_id], countdown=eta_seconds)
     return getattr(task, "id", "")
 
 
 def reschedule_voice_call(celery_task_id: str, new_eta_seconds: int) -> str:
-    logger.info("Tool: reschedule_voice_call %s to in %ss", celery_task_id, new_eta_seconds)
+    logger.info(f"Tool: reschedule_voice_call {celery_task_id} to in {new_eta_seconds}s")
     try:
         celery_app.control.revoke(celery_task_id, terminate=True)
     except Exception:
@@ -54,17 +54,48 @@ def cancel_recovery_workflow(celery_task_id: str) -> bool:
 
 
 async def verify_payment_status(order_id: str) -> dict:
-    logger.info("Tool: verify_payment_status %s", order_id)
+    logger.info(f"Tool: verify_payment_status {order_id}")
     return await payment.client.fetch_order(order_id)
 
 
 async def get_product_catalog_info(product_id: str) -> dict:
-    logger.info("Tool: get_product_catalog_info %s", product_id)
+    logger.info(f"Tool: get_product_catalog_info {product_id}")
     # placeholder: in real app query product DB or service
     return {"product_id": product_id, "title": "Unknown", "return_policy": "7 days"}
 
 
 def trigger_immediate_voice_call(thread_id: str) -> dict:
-    logger.info("Tool: trigger_immediate_voice_call %s", thread_id)
+    logger.info(f"Tool: trigger_immediate_voice_call {thread_id}")
     task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[thread_id])
     return {"task_id": getattr(task, "id", "")}
+
+
+# --- Summarizer tool ---
+async def summarizer(context: dict | None = None, messages: list[dict] | None = None, max_tokens: int = 256) -> str:
+    """Summarize provided context and recent messages using the configured LLM client.
+
+    Kept inside tools.py so consumers (LangGraph manager and fallbacks) can reuse it.
+    """
+    try:
+        from src.infrastructure.clients.openai_client import OpenRouterClient  # local import to avoid cycles
+        from src.agent.prompts import SYSTEM_PROMPT
+
+        client = OpenRouterClient()
+        parts = [
+            "Summarize the conversation and context. Provide a concise summary useful for an automated recovery agent. Highlight key facts, customer phone number, outstanding amount, and recommended next action.",
+        ]
+        if context:
+            parts.append(f"Context: {context}")
+        if messages:
+            parts.append(f"Recent messages: {messages}")
+        prompt = "\n\n".join(parts)
+        messages_payload = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+        response = await client.chat(messages=messages_payload, max_tokens=max_tokens)
+        await client.close()
+        return response
+    except Exception as exc:
+        logger.exception("Summarizer failed: %s", exc)
+        return "Unable to summarize automatically. Manual review recommended." 

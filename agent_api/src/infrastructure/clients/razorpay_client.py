@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import hashlib
 import hmac
@@ -12,10 +12,7 @@ settings = get_settings()
 
 
 class RazorpayClient:
-    """Async-ish Razorpay client using httpx and HTTP REST API.
-
-    Uses HTTP Basic auth with api_key:key_secret.
-    """
+    """Async-ish Razorpay client using httpx and HTTP REST API."""
 
     def __init__(self, api_key: str | None = None, key_secret: str | None = None) -> None:
         self.api_key = api_key or settings.RAZORPAY_API_KEY
@@ -23,8 +20,8 @@ class RazorpayClient:
         if not self.api_key or not self.key_secret:
             raise RuntimeError("RAZORPAY_API_KEY and RAZORPAY_KEY_SECRET must be configured")
         self.base = "https://api.razorpay.com/v1"
-        self._client = httpx.AsyncClient(auth=(self.api_key, self.key_secret), timeout=15.0)
-
+        self._client = httpx.AsyncClient(auth=(self.api_key, self.key_secret),timeout=15.0)
+        
     async def create_order(self, amount_in_inr: int, receipt: str | None = None) -> Dict[str, Any]:
         if amount_in_inr <= 0:
             raise ValueError("amount_in_inr must be greater than zero")

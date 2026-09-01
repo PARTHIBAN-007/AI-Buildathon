@@ -186,7 +186,7 @@ function App() {
       const amount = total + 399 + 299
       const payload = { amount_in_inr: Math.round(amount) }
 
-      const res = await fetch('http://localhost:8000/create-order', {
+      const res = await fetch('http://127.0.0.1:8000/payments/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -199,6 +199,9 @@ function App() {
       }
 
       const data = await res.json()
+
+      // Normalize order data returned by backend
+      const order = data.order || data
 
       // Load Razorpay SDK
       const loadRazorpay = () =>
@@ -215,17 +218,18 @@ function App() {
       if (!ok) throw new Error('Failed to load Razorpay SDK')
 
       const options = {
-        key: data.key_id || '',
-        amount: data.amount || payload.amount_in_inr * 100,
-        currency: 'INR',
+        // backend returns order object under `order`; pick known fields with fallbacks
+        key: data.key_id || order.key_id || '',
+        amount: order.amount || payload.amount_in_inr * 100,
+        currency: order.currency || 'INR',
         name: 'Gadgets Shop',
-        description: 'Purchase from Gadgets store',
-        order_id: data.order_id,
+        description: payload.description || 'Purchase from Gadgets store',
+        order_id: order.id || order.order_id,
         prefill: { name: formData.name, email: formData.email },
         handler: async function (response) {
           // response contains razorpay_payment_id, razorpay_order_id, razorpay_signature
           try {
-            const verifyRes = await fetch('http://localhost:8000/verify-payment', {
+            const verifyRes = await fetch('http://localhost:8000/payments/verify', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(response),

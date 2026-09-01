@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
+
 
 from src.api.cart import router as cart_router
 from src.api.payments import router as payments_router
@@ -14,6 +16,14 @@ app = FastAPI(
     title="Agent API",
     version="1.0.0",
     description="Abandoned cart recovery agent API with WhatsApp, Razorpay, and Sarvam integrations.",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.get("/")

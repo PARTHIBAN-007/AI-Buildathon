@@ -8,7 +8,7 @@ from src.agent.graph import resume_agent_thread
 router = APIRouter()
 
 
-@router.post("/whatsapp")
+@router.post("/webhook")
 async def whatsapp_inbound(request: Request):
     payload = await request.json()
     logger.info("Received WhatsApp webhook payload: {}", payload)

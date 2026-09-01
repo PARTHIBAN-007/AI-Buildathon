@@ -1,4 +1,4 @@
-from functools import lru_cache
+﻿from functools import lru_cache
 
 from dotenv import load_dotenv
 from pydantic import Field
@@ -17,15 +17,13 @@ class Settings(BaseSettings):
     EXOTEL_PHONE_NUMBER: str | None = Field(default=None, alias="EXOTEL_PHONE_NUMBER")
 
     SARVAM_API_KEY: str | None = Field(default=None, alias="SARVAM_API_KEY")
-    SARVAM_BASE_URL: str | None = Field(default=None, alias="SARVAM_BASE_URL")
+    SARVAM_BASE_URL: str = Field(default="https://api.sarvam.ai", alias="SARVAM_BASE_URL")
 
     RAZORPAY_API_KEY: str | None = Field(default=None, alias="RAZORPAY_API_KEY")
     RAZORPAY_KEY_SECRET: str | None = Field(default=None, alias="RAZORPAY_KEY_SECRET")
     RAZORPAY_WEBHOOK_SECRET: str | None = Field(default=None, alias="RAZORPAY_WEBHOOK_SECRET")
-    
-    # OpenAI / OpenRouter configuration — the OpenAI SDK will be used but pointed to OpenRouter
     OPENAI_API_KEY: str | None = Field(default=None, alias="OPENAI_API_KEY")
-    OPENAI_API_BASE: str | None = Field(default=None, alias="OPENAI_API_BASE")
+    OPENAI_API_BASE: str | None = Field(default="https://openrouter.ai/api/v1", alias="OPENAI_API_BASE")
     OPENAI_MODEL: str = Field(default="google/gemma-4-31b-it:free", alias="OPENAI_MODEL")
 
     META_APP_ID: str | None = Field(default=None, alias="META_APP_ID")
@@ -36,7 +34,7 @@ class Settings(BaseSettings):
     META_BUSINESS_ID: str | None = Field(default=None, alias="META_BUSINESS_ID")
 
     class Config:
-        env_file = "..env"
+        env_file = "../.env"
         env_file_encoding = "utf-8"
 
 

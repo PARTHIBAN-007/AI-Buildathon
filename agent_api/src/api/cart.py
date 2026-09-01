@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from loguru import logger
 
 from src.config import get_settings
-from src.services.customer_service import build_customer_profile
+from src.application.customer_service import build_customer_profile
 from src.agent.graph import start_agent_thread
 
 router = APIRouter()
