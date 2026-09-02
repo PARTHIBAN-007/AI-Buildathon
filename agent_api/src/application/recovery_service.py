@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from loguru import logger
-from fastapi import HTTPException
 from typing import Any, Dict
 
-from src.application.customer_service import build_customer_profile
+from fastapi import HTTPException
+from loguru import logger
+
 from src.agent.graph import start_agent_thread
+from src.application.customer_service import build_customer_profile
+from src.infrastructure.postgres.repository import list_active_checkouts as _list_active_checkouts
+from src.infrastructure.postgres.repository import update_checkout_status
 
 
 def _extract_phone_from_razorpay(payload: Dict[str, Any] | None) -> str | None:
@@ -39,7 +42,7 @@ def _extract_phone_from_razorpay(payload: Dict[str, Any] | None) -> str | None:
 
 
 async def handle_razorpay_webhook(payload: Dict[str, Any] | None, raw: bytes | None, signature: str | None) -> None:
-    logger.info("Handling razorpay webhook payload: %s", payload)
+    logger.info(f"Handling razorpay webhook payload: {payload}")
 
     event_type = None
     if payload:
@@ -74,7 +77,7 @@ async def handle_razorpay_webhook(payload: Dict[str, Any] | None, raw: bytes | N
     try:
         profile = await build_customer_profile(phone)
     except Exception as exc:
-        logger.exception("Failed to build customer profile for %s: %s", phone, exc)
+        logger.exception(f"Failed to build customer profile for {phone}: {exc}")
         profile = {"summary": "No profile available", "max_discount": 0}
 
     # Compose context for agent: include failure reason, any order or payment details, and customer profile
@@ -89,17 +92,20 @@ async def handle_razorpay_webhook(payload: Dict[str, Any] | None, raw: bytes | N
     try:
         await start_agent_thread(thread_id=phone, context=context)
     except Exception as exc:
-        logger.exception("Failed to start agent thread for %s: %s", phone, exc)
+        logger.exception(f"Failed to start agent thread for {phone}: {exc}")
         raise HTTPException(status_code=500, detail="Failed to start recovery agent")
 
     return
 
 
 async def lookup_active_checkouts(customer_phone: str) -> list:
-    logger.info("Lookup active checkouts for %s", customer_phone)
-    return []
+    logger.info(f"Lookup active checkouts for {customer_phone}")
+    return await _list_active_checkouts(customer_phone)
 
 
 async def mark_checkout_paid(checkout_id: str) -> None:
-    logger.info("Marking checkout %s as PAID", checkout_id)
+    logger.info(f"Marking checkout {checkout_id} as PAID")
+    checkout = await update_checkout_status(checkout_id, status="PAID")
+    if checkout is None:
+        raise HTTPException(status_code=404, detail="Checkout not found")
     return

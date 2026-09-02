@@ -1,20 +1,12 @@
 from __future__ import annotations
 
 from loguru import logger
-
-try:
-    from src.infrastructure.sarvam import SarvamClient
-except Exception:
-    SarvamClient = None
-
-try:
-    from src.jobs.celery_app import celery_app
-except Exception:
-    celery_app = None
+from src.jobs.celery_app import celery_app
+from src.infrastructure.clients.sarvam_client import SarvamClient
 
 
 def trigger_sarvam_voice_call(phone: str):
-    logger.info("Triggering Sarvam voice call task for {}", phone)
+    logger.info(f"Triggering Sarvam voice call task for {phone}")
     # This function will be registered as a Celery task in a real setup
     # For now, call SarvamClient if available
     if SarvamClient is None:
@@ -31,5 +23,5 @@ def trigger_sarvam_voice_call(phone: str):
     try:
         return asyncio.get_event_loop().run_until_complete(_call())
     except Exception as exc:
-        logger.exception("Sarvam call failed: {}", exc)
+        logger.exception(f"Sarvam call failed: {exc}")
         return {"status": "error"}

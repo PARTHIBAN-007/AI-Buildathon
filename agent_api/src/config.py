@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str | None = Field(default=None, alias="OPENAI_API_KEY")
     OPENAI_API_BASE: str | None = Field(default="https://openrouter.ai/api/v1", alias="OPENAI_API_BASE")
     OPENAI_MODEL: str = Field(default="google/gemma-4-31b-it:free", alias="OPENAI_MODEL")
+    POSTGRES_DSN: str = Field(default="postgresql://postgres:postgres@localhost:5432/agent_api", alias="POSTGRES_DSN")
 
     META_APP_ID: str | None = Field(default=None, alias="META_APP_ID")
     META_ACCESS_TOKEN: str | None = Field(default=None, alias="META_ACCESS_TOKEN")

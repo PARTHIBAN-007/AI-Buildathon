@@ -31,7 +31,7 @@ class WhatsAppClient:
         url = f"{self.base_url}/{self.phone_number_id}/messages"
         headers = {"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"}
         payload = {"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": body}}
-        logger.debug("WhatsApp send_text url=%s payload=%s", url, payload)
+        logger.debug(f"WhatsApp send_text url={url} payload={payload}")
         resp = await self._client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return resp.json()
@@ -45,7 +45,7 @@ class WhatsAppClient:
             "type": "template",
             "template": {"name": template_name, "language": {"code": language}, "components": components or []},
         }
-        logger.debug("WhatsApp send_template url=%s payload=%s", url, payload)
+        logger.debug(f"WhatsApp send_template url={url} payload={payload}")
         resp = await self._client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return resp.json()

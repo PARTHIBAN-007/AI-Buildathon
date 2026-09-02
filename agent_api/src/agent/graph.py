@@ -2,136 +2,88 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from langgraph.graph import END, START, StateGraph
 from loguru import logger
 
-from src.agent import edges, nodes, tools
+from src.agent import nodes
+from src.agent.state import AgentState
+from src.infrastructure.postgres.checkpointer import build_checkpoint_saver
 
 
-class RunnerRegistry:
-    def __init__(self) -> None:
-        self._store: Dict[str, Dict[str, Any]] = {}
+def build_recovery_graph() -> Any:
+    """Create the recovery graph with chat as the primary node.
 
-    def register(self, thread_id: str, graph: Any, runner: Any) -> None:
-        self._store[thread_id] = {"graph": graph, "runner": runner}
+    The agent decides and executes tool calls directly from chat. Summarization is
+    only triggered as an internal helper when history grows too large; there is no
+    separate outreach node in the graph.
+    """
+    graph = StateGraph(AgentState)
+    graph.add_node("chat", nodes.chat_node)
+    graph.add_edge(START, "chat")
+    graph.add_edge("chat", END)
+    return graph.compile(checkpointer=build_checkpoint_saver())
 
-    def get(self, thread_id: str) -> Dict[str, Any] | None:
-        return self._store.get(thread_id)
 
-
-_registry = RunnerRegistry()
-
-
-def _register_tools(graph: Any) -> None:
-    registry = {
-        "send_whatsapp_message": tools.send_whatsapp_message,
-        "generate_discounted_payment_link": tools.generate_discounted_payment_link,
-        "schedule_voice_call": tools.schedule_voice_call,
-        "reschedule_voice_call": tools.reschedule_voice_call,
-        "cancel_recovery_workflow": tools.cancel_recovery_workflow,
-        "verify_payment_status": tools.verify_payment_status,
-        "get_product_catalog_info": tools.get_product_catalog_info,
-        "trigger_immediate_voice_call": tools.trigger_immediate_voice_call,
-        "summarizer": tools.summarizer,
+async def start_agent_thread(thread_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    """Create and invoke a recovery flow for a new thread using a Postgres-backed checkpoint."""
+    graph = build_recovery_graph()
+    payload = {
+        "messages": [{"role": "user", "content": context.get("failure_reason") or "start recovery"}],
+        "context": context,
+        "customer_profile": context.get("customer_profile", {}),
+        "checkout_id": context.get("checkout_id"),
+        "summary": None,
     }
-
-    if hasattr(graph, "register_tool"):
-        for name, func in registry.items():
-            graph.register_tool(name, func)
-        return
-
-    if hasattr(graph, "add_tool"):
-        for name, func in registry.items():
-            graph.add_tool(name, func)
-        return
-
-    setattr(graph, "tools", registry)
+    result = graph.invoke(
+        payload,
+        config={"configurable": {"thread_id": thread_id}},
+    )
+    logger.info(f"Started LangGraph thread {thread_id}")
+    return result
 
 
-def _build_graph(thread_id: str, context: Dict[str, Any]) -> Any:
-    import langgraph as lg  # type: ignore
+async def resume_agent_thread(thread_id: str, message: str, raw: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """Resume a thread using the Postgres-backed checkpoint."""
+    from src.application.voice_service import VoiceService
+    from src.infrastructure.postgres.repository import list_checkouts_by_phone, update_checkout_status
 
-    try:
-        return lg.Graph(name=f"recovery-{thread_id}", context={"thread_id": thread_id, **context})
-    except Exception:
-        builder = getattr(lg, "builder", None)
-        if builder is None or not hasattr(builder, "GraphBuilder"):
-            raise RuntimeError("langgraph Graph API is not available")
-        graph_builder = builder.GraphBuilder(name=f"recovery-{thread_id}")
-        return graph_builder.build(initial_context={"thread_id": thread_id, **context})
+    phone = thread_id
+    checkouts = await list_checkouts_by_phone(phone)
+    if any(item.status == "PAID" for item in checkouts):
+        logger.info(f"Payment already marked as PAID for {phone}; revoking pending Celery jobs before continuing")
+        voice = VoiceService()
+        await voice._cancel_all_pending_jobs_for_checkout(phone=phone)
+        return {"status": "cancelled", "reason": "payment_already_paid"}
 
+    if "paid" in message.lower() or "payment done" in message.lower() or "i have paid" in message.lower():
+        for checkout in checkouts:
+            if checkout.status != "PAID":
+                await update_checkout_status(checkout.id, status="PAID")
+        voice = VoiceService()
+        await voice._cancel_all_pending_jobs_for_checkout(phone=phone)
+        logger.info(f"Customer confirmed payment for {phone}; cancelling active recovery jobs")
+        return {"status": "paid", "reason": "payment_confirmed"}
 
-def _wire_graph(graph: Any) -> None:
-    graph.add_node(nodes.summarizer_node(name="summarizer"))
-    graph.add_node(nodes.outreach_node(name="outreach"))
-
-    for source, target in edges.DEFAULT_EDGES:
-        if hasattr(graph, "connect"):
-            graph.connect(source, target)
-        elif hasattr(graph, "add_edge"):
-            graph.add_edge(source, target)
-        else:
-            graph.__dict__.setdefault("_adj", []).append((source, target))
-
-
-def start_thread(thread_id: str, context: Dict[str, Any]) -> Any:
-    """Create and start the recovery graph."""
-    try:
-        from langgraph import runtime as lg_runtime  # type: ignore
-    except Exception as exc:
-        logger.exception("langgraph runtime import failed: %s", exc)
-        raise RuntimeError("langgraph package is required for recovery threads")
-
-    graph = _build_graph(thread_id=thread_id, context=context)
-    _register_tools(graph)
-    _wire_graph(graph)
-
-    runtime = lg_runtime.Runtime()
-    if hasattr(runtime, "start"):
-        runner = runtime.start(graph)
-    elif hasattr(runtime, "run_async"):
-        runner = runtime.run_async(graph)
-    else:
-        runtime.run(graph)
-        runner = None
-
-    _registry.register(thread_id=thread_id, graph=graph, runner=runner)
-    logger.info("Started LangGraph runner for thread %s", thread_id)
-    return runner
+    graph = build_recovery_graph()
+    payload = {"messages": [{"role": "user", "content": message}]}
+    result = graph.invoke(
+        payload,
+        config={"configurable": {"thread_id": thread_id}},
+    )
+    logger.info(f"Resumed LangGraph thread {thread_id}")
+    return result
 
 
-def resume_thread(thread_id: str, message: str) -> None:
-    entry = _registry.get(thread_id)
-    if entry is None:
-        raise KeyError(f"No runner for thread {thread_id}")
-
-    runner = entry.get("runner")
-    if runner is None:
-        graph = entry.get("graph")
-        if hasattr(graph, "context"):
-            graph.context.setdefault("messages", []).append({"role": "user", "content": message})
-            return
-        raise RuntimeError("Runner unavailable and graph has no context")
-
-    if hasattr(runner, "send_message"):
-        runner.send_message({"role": "user", "content": message})
-        return
-    if hasattr(runner, "receive"):
-        runner.receive({"role": "user", "content": message})
-        return
-    if hasattr(runner, "post"):
-        runner.post({"role": "user", "content": message})
-        return
-
-    raise RuntimeError("Runner does not support message delivery")
-
-
-async def start_agent_thread(thread_id: str, context: Dict[str, Any]) -> None:
-    start_thread(thread_id=thread_id, context=context)
-
-
-async def resume_agent_thread(thread_id: str, message: str, raw: Dict[str, Any] | None = None) -> None:
-    resume_thread(thread_id=thread_id, message=message)
-
-
-async def append_voice_summary(thread_id: str, summary: str | None, raw: Dict[str, Any] | None = None) -> None:
-    logger.info("Appending voice summary for thread %s: %s", thread_id, summary)
+async def append_voice_summary(thread_id: str, summary: str | None, raw: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """Append a voice summary into the thread state using the Postgres-backed checkpoint."""
+    graph = build_recovery_graph()
+    payload = {
+        "messages": [{"role": "assistant", "content": summary or "No voice summary provided"}],
+        "summary": summary,
+    }
+    result = graph.invoke(
+        payload,
+        config={"configurable": {"thread_id": thread_id}},
+    )
+    logger.info(f"Appended voice summary for thread {thread_id}")
+    return result

@@ -11,7 +11,7 @@ router = APIRouter()
 @router.post("/webhook")
 async def whatsapp_inbound(request: Request):
     payload = await request.json()
-    logger.info("Received WhatsApp webhook payload: {}", payload)
+    logger.info(f"Received WhatsApp webhook payload: {payload}")
 
     try:
         # Extract phone/thread_id and message text from Meta payload
@@ -30,5 +30,5 @@ async def whatsapp_inbound(request: Request):
 
         return {"status": "ok"}
     except Exception as exc:
-        logger.exception("Failed to process WhatsApp webhook: {}", exc)
+        logger.exception(f"Failed to process WhatsApp webhook: {exc}")
         raise HTTPException(status_code=500, detail="Failed to process webhook")

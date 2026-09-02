@@ -21,7 +21,7 @@ async def check_checkouts(payload: PaymentStatusRequest):
         items = await lookup_active_checkouts(payload.customer_phone)
         return {"status": "ok", "checkouts": items}
     except Exception as exc:
-        logger.exception("Failed to query checkouts: %s", exc)
+        logger.exception(f"Failed to query checkouts: {exc}")
         raise HTTPException(status_code=500, detail="Failed to query checkouts")
 
 
@@ -35,7 +35,7 @@ async def mark_paid(payload: MarkPaidRequest):
         await mark_checkout_paid(payload.checkout_id)
         return {"status": "ok"}
     except Exception as exc:
-        logger.exception("Failed to mark checkout paid: %s", exc)
+        logger.exception(f"Failed to mark checkout paid: {exc}")
         raise HTTPException(status_code=500, detail="Failed to mark paid")
 
 
@@ -55,13 +55,13 @@ async def create_order(payload: CreateOrderRequest):
     service = PaymentService()
     settings = get_settings()
     try:
-        logger.info("Creating Razorpay order for amount=%s receipt=%s", payload.amount_in_inr, payload.receipt)
+        logger.info(f"Creating Razorpay order for amount={payload.amount_in_inr} receipt={payload.receipt}")
         order = await service.create_order(amount_in_inr=payload.amount_in_inr, receipt=payload.receipt)
         # return order info to UI (order.id, amount, currency etc.) and include publishable key
         key_id = getattr(settings, "RAZORPAY_API_KEY", None)
         return {"status": "ok", "key_id": key_id, "order": order}
     except Exception as exc:
-        logger.exception("Failed to create order: %s", exc)
+        logger.exception(f"Failed to create order: {exc}")
         raise HTTPException(status_code=500, detail="Failed to create order")
 
 
@@ -88,5 +88,5 @@ async def verify_payment(payload: VerifyPaymentRequest):
 
         return {"status": "ok", "verified": bool(verified)}
     except Exception as exc:
-        logger.exception("Failed to verify payment: %s", exc)
+        logger.exception(f"Failed to verify payment: {exc}")
         raise HTTPException(status_code=500, detail="Failed to verify payment")

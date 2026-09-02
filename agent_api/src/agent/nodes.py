@@ -1,26 +1,49 @@
 from __future__ import annotations
 
 from typing import Any
+
 from loguru import logger
 
-# Node builders are intentionally minimal and return descriptors that match common
-# LangGraph node APIs. They avoid wrapping each tiny tool — tools are referenced
-# by name and registered on the graph.
+from src.agent.state import AgentState
+from src.agent.tools import summarizer
+from src.infrastructure.clients.openai_client import OpenRouterClient
+from src.agent.prompts import SYSTEM_PROMPT
 
 
-def summarizer_node(graph: Any, name: str = "summarizer") -> dict:
-    """Descriptor for a summarizer node. The graph implementation will use the
-    registered 'summarizer' tool to produce a concise state summary.
+async def summarizer_node(state: AgentState) -> dict[str, Any]:
+    logger.info("Running summarizer node")
+    messages = state.get("messages", [])
+    context = state.get("context", {})
+    summary = await summarizer(context=context, messages=messages)
+    return {"summary": summary}
+
+
+async def chat_node(state: AgentState) -> dict[str, Any]:
+    """Primary chat node: run the LLM and allow tool actions directly in this node.
+
+    Summarization is still triggered only when the conversation grows beyond a
+    rough token threshold, but the graph itself does not route through a separate
+    outreach node.
     """
-    logger.debug("Constructing summarizer node %s", name)
-    return {"id": name, "type": "tool", "tool": "summarizer", "outputs": ["summary"]}
+    logger.info("Running chat node")
+    messages = list(state.get("messages", []))
+    context = state.get("context", {})
 
+    total_chars = sum(len(m.get("content", "")) for m in messages)
+    token_estimate = total_chars // 4
+    TOKEN_THRESHOLD = 1500
 
-def outreach_node(graph: Any, name: str = "outreach") -> dict:
-    """Descriptor for an outreach node that sends WhatsApp messages and may
-    call other tools (e.g., generate_discounted_payment_link).
-    """
-    logger.debug("Constructing outreach node %s", name)
-    return {"id": name, "type": "composed", "steps": [
-        {"action": "send_whatsapp_message", "args": ["thread_id", "message_text"]},
-    ], "outputs": ["sent"]}
+    if token_estimate > TOKEN_THRESHOLD:
+        logger.info(f"Token estimate {token_estimate} exceeds threshold {TOKEN_THRESHOLD}; summarizing")
+        summary = await summarizer(context=context, messages=messages)
+        messages = [{"role": "system", "content": f"Summary: {summary}"}]
+        state["summary"] = summary
+
+    client = OpenRouterClient()
+    payload = [{"role": "system", "content": SYSTEM_PROMPT}] + messages
+    try:
+        response = await client.chat(payload)
+    finally:
+        await client.close()
+
+    return {"messages": [*messages, {"role": "assistant", "content": response}]}

@@ -11,7 +11,7 @@ router = APIRouter()
 @router.post("/voice")
 async def sarvam_voice_webhook(request: Request):
     payload = await request.json()
-    logger.info("Received Sarvam voice webhook: {}", payload)
+    logger.info(f"Received Sarvam voice webhook: {payload}")
 
     try:
         # Expecting payload with phone and summary
@@ -25,5 +25,5 @@ async def sarvam_voice_webhook(request: Request):
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Failed to process voice webhook: {}", exc)
+        logger.exception(f"Failed to process voice webhook: {exc}")
         raise HTTPException(status_code=500, detail="Voice webhook processing failed")

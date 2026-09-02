@@ -28,13 +28,12 @@ class AbandonedCartRequest(BaseModel):
 @router.post("/cart/abandoned")
 async def cart_abandoned(payload: AbandonedCartRequest):
     settings = get_settings()
-    logger.info("Received abandoned cart for {} amount={}", payload.customer_phone, payload.total_amount)
+    logger.info(f"Received abandoned cart for {payload.customer_phone} amount={payload.total_amount}")
 
-    # Build customer profile (behavioral summary)
     try:
         profile = await build_customer_profile(payload.customer_phone)
     except Exception as exc:
-        logger.warning("Customer profiling failed: {}", exc)
+        logger.warning(f"Customer profiling failed: {exc}")
         profile = {"summary": "No profile available", "max_discount": 0}
 
     # Start agent thread (Turn 0) with context
@@ -47,7 +46,7 @@ async def cart_abandoned(payload: AbandonedCartRequest):
         }
         await start_agent_thread(thread_id=payload.customer_phone, context=context)
     except Exception as exc:
-        logger.exception("Failed to start agent thread: {}", exc)
+        logger.exception(f"Failed to start agent thread: {exc}")
         raise HTTPException(status_code=500, detail="Agent initialization failed")
 
     return {"status": "ok", "message": "Abandoned cart recorded and recovery worker started"}

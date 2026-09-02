@@ -21,7 +21,7 @@ class SarvamClient:
         url = f"{self.base_url.rstrip('/')}/v1/calls/outbound"
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         payload = {"to": phone, "language": language or "hi-IN", "metadata": metadata or {}}
-        logger.debug("Sarvam trigger_call url=%s payload=%s", url, payload)
+        logger.debug(f"Sarvam trigger_call url={url} payload={payload}")
         resp = await self._client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         return resp.json()

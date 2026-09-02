@@ -38,7 +38,7 @@ class OpenRouterClient:
             if "text" in choice:
                 return choice["text"]
         except Exception:
-            logger.warning("Unexpected OpenRouter response shape: %s", data)
+            logger.warning(f"Unexpected OpenRouter response shape: {data}")
         return str(data)
 
     async def close(self) -> None:
