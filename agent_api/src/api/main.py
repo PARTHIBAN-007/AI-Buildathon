@@ -9,19 +9,23 @@ from src.api.payments import router as payments_router
 from src.api.webhooks.razorpay import router as razorpay_webhook_router
 from src.api.webhooks.whatsapp import router as whatsapp_webhook_router
 from src.api.webhooks.voice import router as voice_webhook_router
-from src.infrastructure.postgres.core import close_db, init_db
+from src.infrastructure.postgres.core import close_db, init_db, init_checkpoint_saver, close_checkpoint_saver
 
 
 async def lifespan(app: FastAPI):
+    # Initialize DB and checkpoint saver before serving requests
     await init_db()
+    await init_checkpoint_saver()
     yield
+    # Shutdown checkpoint saver and DB
+    await close_checkpoint_saver()
     await close_db()
 
 app = FastAPI(
     title="Agent API",
     version="1.0.0",
     description="Abandoned cart recovery agent API with WhatsApp, Razorpay, and Sarvam integrations.",
-    lifespan=lifespan
+    #lifespan=lifespan
 )
 
 app.add_middleware(

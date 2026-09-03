@@ -1,7 +1,7 @@
 ﻿from __future__ import annotations
 
 from typing import List, Dict, Any
-import httpx
+from openai import AsyncOpenAI
 from loguru import logger
 
 from src.config import get_settings
@@ -10,36 +10,40 @@ settings = get_settings()
 
 
 class OpenRouterClient:
-    """Simple async OpenRouter/OpenAI-compatible client for chat completions."""
+    """Simple async OpenRouter client using the official OpenAI SDK."""
 
-    def __init__(self, api_key: str | None = None, api_base: str | None = None, model: str | None = None) -> None:
-        self.api_key = api_key or settings.OPENAI_API_KEY
-        self.api_base = api_base or settings.OPENAI_API_BASE
-        self.model = model or settings.OPENAI_MODEL
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        self.api_key = api_key or settings.OPENROUTER_API_KEY
+        self.api_base = api_base or getattr(settings, "OPENROUTER_API_BASE", None) or "https://openrouter.ai/api/v1"
+        self.model = model or settings.OPENROUTER_MODEL
+
         if not self.api_key:
-            raise RuntimeError("OPENAI_API_KEY must be configured to call the LLM")
-        self._client = httpx.AsyncClient(timeout=getattr(settings, "OPENAI_TIMEOUT", 30))
+            raise RuntimeError("OPENROUTER_API_KEY must be configured to call the LLM")
 
+        # Initialize the modern async OpenAI client configured for OpenRouter
+        self.client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.api_base,
+        )
 
     async def chat(self, messages: List[Dict[str, str]], max_tokens: int = 512) -> str:
-        url = f"{self.api_base.rstrip('/')}/chat/completions"
-        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
-        payload: Dict[str, Any] = {"model": self.model, "messages": messages, "max_tokens": max_tokens}
-
-        logger.debug(f"OpenRouter request url={url} model={self.model}")
-        resp = await self._client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+        logger.debug(f"OpenRouter request model={self.model}")
 
         try:
-            choice = data.get("choices", [])[0]
-            if isinstance(choice.get("message"), dict):
-                return choice["message"]["content"]
-            if "text" in choice:
-                return choice["text"]
-        except Exception:
-            logger.warning(f"Unexpected OpenRouter response shape: {data}")
-        return str(data)
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,  # type: ignore[arg-type]
+                max_tokens=max_tokens,
+            )
+            return response.choices[0].message.content or ""
+        except Exception as err:
+            logger.error(f"OpenRouter request failed: {err}")
+            raise
 
     async def close(self) -> None:
-        await self._client.aclose()
+        await self.client.close()

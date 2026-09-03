@@ -34,16 +34,22 @@ async def start_agent_thread(thread_id: str, context: Dict[str, Any]) -> Dict[st
         "checkout_id": context.get("checkout_id"),
         "summary": None,
     }
-    result = graph.invoke(
+
+    result = await graph.ainvoke(
         payload,
-        config={"configurable": {"thread_id": thread_id}},
+        # config={"configurable": {"thread_id": thread_id}},
     )
     logger.info(f"Started LangGraph thread {thread_id}")
     return result
 
 
 async def resume_agent_thread(thread_id: str, message: str, raw: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    """Resume a thread using the Postgres-backed checkpoint."""
+    """Resume a thread using the Postgres-backed checkpoint.
+
+    This function also guards recovery by checking whether the checkout is already
+    paid. If the checkout is paid, pending Celery jobs are revoked and the flow
+    returns early.
+    """
     from src.application.voice_service import VoiceService
     from src.infrastructure.postgres.repository import list_checkouts_by_phone, update_checkout_status
 
@@ -66,7 +72,7 @@ async def resume_agent_thread(thread_id: str, message: str, raw: Dict[str, Any] 
 
     graph = build_recovery_graph()
     payload = {"messages": [{"role": "user", "content": message}]}
-    result = graph.invoke(
+    result = await graph.ainvoke(
         payload,
         config={"configurable": {"thread_id": thread_id}},
     )
@@ -81,7 +87,7 @@ async def append_voice_summary(thread_id: str, summary: str | None, raw: Dict[st
         "messages": [{"role": "assistant", "content": summary or "No voice summary provided"}],
         "summary": summary,
     }
-    result = graph.invoke(
+    result = await graph.ainvoke(
         payload,
         config={"configurable": {"thread_id": thread_id}},
     )

@@ -5,13 +5,23 @@ from typing import Any
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from loguru import logger
 
-from src.config import get_settings
+from src.infrastructure.postgres.core import get_checkpoint_saver
 from src.infrastructure.postgres.repository import load_agent_state as _load_agent_state
 from src.infrastructure.postgres.repository import save_agent_state as _save_agent_state
 
 
-def build_checkpoint_saver() -> AsyncPostgresSaver:
-    return AsyncPostgresSaver.from_conn_string(get_settings().POSTGRES_DSN)
+def build_checkpoint_saver():
+    """Return the live saver instance created at app startup, or None.
+
+    The actual AsyncPostgresSaver is created and entered in
+    infrastructure.postgres.core.init_checkpoint_saver() during FastAPI
+    startup. Here we return the in-memory saver instance so StateGraph.compile
+    receives a valid saver object rather than an async context manager.
+    """
+    saver = get_checkpoint_saver()
+    if saver is None:
+        logger.debug("No checkpoint saver available; StateGraph will compile without a checkpointer.")
+    return saver
 
 
 async def save_agent_state(thread_id: str, state: dict[str, Any]) -> None:

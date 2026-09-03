@@ -7,6 +7,7 @@ from src.application.whatsapp_service import WhatsAppService
 from src.application.payment_service import PaymentService
 from src.application.voice_service import VoiceService
 from src.infrastructure.clients.openai_client import OpenRouterClient
+from src.jobs.celery_app import celery_app
 
 
 whatsapp = WhatsAppService()
@@ -28,15 +29,30 @@ async def generate_discounted_payment_link(thread_id: str, amount_in_inr: int, d
     return await payment.create_payment_link(amount_in_inr=discounted_amount, description=f"Discounted for {thread_id}")
 
 
+def schedule_voice_call(thread_id: str, eta_seconds: int = 7200) -> str:
+    logger.info(f"Tool: schedule_voice_call for {thread_id} in {eta_seconds}s")
+    task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[thread_id], countdown=eta_seconds)
+    return getattr(task, "id", "")
 
-async def reschedule_voice_call(job_id: str, new_eta_seconds: int) -> dict:
-    logger.info(f"Tool: reschedule_voice_call job={job_id} to in {new_eta_seconds}s")
-    return await voice.reschedule_call(job_id=job_id, new_eta_seconds=new_eta_seconds)
+
+def reschedule_voice_call(celery_task_id: str, new_eta_seconds: int) -> str:
+    logger.info(f"Tool: reschedule_voice_call {celery_task_id} to in {new_eta_seconds}s")
+    try:
+        celery_app.control.revoke(celery_task_id, terminate=True)
+    except Exception:
+        logger.warning(f"Failed to revoke existing task {celery_task_id} (it may not exist)")
+    task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=["placeholder"], countdown=new_eta_seconds)
+    return getattr(task, "id", "")
 
 
-async def cancel_recovery_workflow(job_id: str) -> bool:
-    logger.info(f"Tool: cancel_recovery_workflow {job_id}")
-    return await voice.cancel_call(job_id=job_id)
+def cancel_recovery_workflow(celery_task_id: str) -> bool:
+    logger.info(f"Tool: cancel_recovery_workflow {celery_task_id}")
+    try:
+        celery_app.control.revoke(celery_task_id, terminate=True)
+        return True
+    except Exception:
+        logger.exception(f"Failed to revoke task {celery_task_id}")
+        return False
 
 
 async def verify_payment_status(order_id: str) -> dict:
@@ -44,9 +60,16 @@ async def verify_payment_status(order_id: str) -> dict:
     return await payment.client.fetch_order(order_id)
 
 
-async def trigger_immediate_voice_call(thread_id: str, checkout_id: str | None = None) -> dict:
+async def get_product_catalog_info(product_id: str) -> dict:
+    logger.info(f"Tool: get_product_catalog_info {product_id}")
+    # placeholder: in real app query product DB or service
+    return {"product_id": product_id, "title": "Unknown", "return_policy": "7 days"}
+
+
+def trigger_immediate_voice_call(thread_id: str) -> dict:
     logger.info(f"Tool: trigger_immediate_voice_call {thread_id}")
-    return await voice.trigger_immediate_call(phone=thread_id, checkout_id=checkout_id)
+    task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[thread_id])
+    return {"task_id": getattr(task, "id", "")}
 
 
 # --- Summarizer tool ---

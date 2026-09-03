@@ -4,16 +4,18 @@ from typing import Any, Dict
 from datetime import datetime
 from loguru import logger
 
+from src.config import get_settings
 from src.infrastructure.clients.sarvam_client import SarvamClient
 from src.jobs.celery_app import celery_app
 from src.infrastructure.postgres.repository import (
     create_scheduled_job,
     update_scheduled_job_status,
+    set_scheduled_job_celery_id,
     get_scheduled_job,
     list_scheduled_jobs_for_checkout,
 )
-from src.infrastructure.postgres.core import async_session_factory
 
+settings = get_settings()
 
 class VoiceService:
     def __init__(self, client: SarvamClient | None = None) -> None:
@@ -32,11 +34,10 @@ class VoiceService:
                     logger.warning(f"Failed to revoke existing task {job.celery_task_id}")
             job.status = "CANCELLED"
             job.updated_at = datetime.utcnow()
-            async with async_session_factory() as session:
-                session.add(job)
-                await session.commit()
+                # persist status change using repository helper
+            await update_scheduled_job_status(job.id, status="CANCELLED")
             cancelled += 1
-        return cancelled
+            return cancelled
 
     async def _checkout_is_paid(self, checkout_id: str | None = None, phone: str | None = None) -> bool:
         if checkout_id is None and phone is None:
@@ -61,7 +62,18 @@ class VoiceService:
 
     async def trigger_call(self, phone: str, language: str | None = None, metadata: Dict | None = None) -> Dict[str, Any]:
         logger.info(f"VoiceService.trigger_call phone={phone}")
-        return await self.client.trigger_call(phone=phone, language=language, metadata=metadata)
+        # map common metadata keys into Sarvam client parameters
+        return await self.client.trigger_call(
+            phone,
+            checkout_id=(metadata or {}).get("checkout_id"),
+            call_summary=(metadata or {}).get("call_summary"),
+            opening_line=(metadata or {}).get("opening_line"),
+            user_name=(metadata or {}).get("user_name"),
+            connection_id=(metadata or {}).get("connection_id") or getattr(settings, "EXOTEL_ACCOUNT_SID", None),
+            agent_phone_number=(metadata or {}).get("agent_phone_number") or getattr(settings, "EXOTEL_PHONE_NUMBER", None),
+            webhook_url=(metadata or {}).get("webhook_url"),
+            lead_id=(metadata or {}).get("lead_id"),
+        )
 
     async def trigger_immediate_call(self, phone: str, checkout_id: str | None = None, metadata: Dict | None = None) -> Dict[str, Any]:
         """Trigger an immediate voice call and record it in ScheduledJob as RUNNING."""
@@ -70,18 +82,13 @@ class VoiceService:
             await self._cancel_all_pending_jobs_for_checkout(checkout_id=checkout_id, phone=phone)
             return {"status": "cancelled", "reason": "payment_already_paid"}
         job = await create_scheduled_job(checkout_id=checkout_id, celery_task_id=None, job_type="voice", status="SCHEDULED")
-        task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[phone])
+        payload = {"checkout_id": checkout_id, **(metadata or {})}
+        task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[phone, payload])
         celery_id = getattr(task, "id", None)
-        await update_scheduled_job_status(job.id, status="SCHEDULED")
         await update_scheduled_job_status(job.id, status="SCHEDULED")
         job_record = await get_scheduled_job(job.id)
         if job_record:
-            job_record.celery_task_id = celery_id
-            job_record.updated_at = datetime.utcnow()
-            async with async_session_factory() as session:
-                session.add(job_record)
-                await session.commit()
-                await session.refresh(job_record)
+            await set_scheduled_job_celery_id(job.id, celery_id)
         return {"task_id": celery_id, "job_id": job.id}
 
     async def schedule_call(self, phone: str, eta_seconds: int = 7200, checkout_id: str | None = None, metadata: Dict | None = None) -> dict:
@@ -90,16 +97,12 @@ class VoiceService:
             await self._cancel_all_pending_jobs_for_checkout(checkout_id=checkout_id, phone=phone)
             return {"status": "cancelled", "reason": "payment_already_paid"}
         job = await create_scheduled_job(checkout_id=checkout_id, celery_task_id=None, job_type="voice", status="SCHEDULED")
-        task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[phone], countdown=eta_seconds)
+        payload = {"checkout_id": checkout_id, **(metadata or {})}
+        task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[phone, payload], countdown=eta_seconds)
         celery_id = getattr(task, "id", None)
         job_record = await get_scheduled_job(job.id)
         if job_record:
-            job_record.celery_task_id = celery_id
-            job_record.updated_at = datetime.utcnow()
-            async with async_session_factory() as session:
-                session.add(job_record)
-                await session.commit()
-                await session.refresh(job_record)
+            await set_scheduled_job_celery_id(job.id, celery_id)
         return {"job_id": job.id, "task_id": celery_id}
 
     async def reschedule_call(self, job_id: str, new_eta_seconds: int) -> dict:
@@ -115,14 +118,10 @@ class VoiceService:
                 celery_app.control.revoke(job.celery_task_id, terminate=True)
             except Exception:
                 logger.warning(f"Failed to revoke existing task {job.celery_task_id}")
-        task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[job.phone or job.checkout_id or "placeholder"], countdown=new_eta_seconds)
+        payload = {"checkout_id": job.checkout_id}
+        task = celery_app.send_task("tasks.trigger_sarvam_voice_call", args=[job.phone or job.checkout_id or "placeholder", payload], countdown=new_eta_seconds)
         celery_id = getattr(task, "id", None)
-        job.celery_task_id = celery_id
-        job.updated_at = datetime.utcnow()
-        async with async_session_factory() as session:
-            session.add(job)
-            await session.commit()
-            await session.refresh(job)
+        await set_scheduled_job_celery_id(job.id, celery_id)
         return {"job_id": job.id, "task_id": celery_id}
 
     async def cancel_call(self, job_id: str) -> bool:
@@ -135,10 +134,5 @@ class VoiceService:
                 celery_app.control.revoke(job.celery_task_id, terminate=True)
             except Exception:
                 logger.warning(f"Failed to revoke existing task {job.celery_task_id}")
-        job.status = "CANCELLED"
-        job.updated_at = datetime.utcnow()
-        async with async_session_factory() as session:
-            session.add(job)
-            await session.commit()
-            await session.refresh(job)
+        await update_scheduled_job_status(job.id, status="CANCELLED")
         return True
