@@ -33,7 +33,7 @@ class WhatsAppClient:
         payload = {"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": body}}
         logger.debug(f"WhatsApp send_text url={url} payload={payload}")
         resp = await self._client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
+        logger.debug(f"WhatsApp send_text response: {resp.status_code} {resp.text}")
         return resp.json()
 
     async def send_template_message(self, to: str, template_name: str, language: str = "en_US", components: Optional[List[Dict]] = None) -> Dict[str, Any]:

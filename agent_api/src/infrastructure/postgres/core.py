@@ -1,23 +1,42 @@
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator
+import re
 from contextlib import AsyncExitStack, asynccontextmanager
+from typing import Any, AsyncGenerator
+
+import anyio
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from loguru import logger
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-import anyio
 
 from src.config import get_settings
 from src.infrastructure.postgres.models import Base
 
 settings = get_settings()
 
-# Use synchronous SQLAlchemy engine/session per template to avoid async_sessionmaker issues
+
+def _sanitize_dsn(dsn_str: str) -> str:
+    """Normalize 'localhost' to '127.0.0.1' to prevent IPv6 (::1) connection refusal issues."""
+    return dsn_str.replace("@localhost:", "@127.0.0.1:").replace("@localhost/", "@127.0.0.1/")
+
+
+def _get_saver_dsn(dsn_str: str) -> str:
+    """Strip SQLAlchemy driver suffixes (e.g. +psycopg2) for AsyncPostgresSaver / psycopg3."""
+    clean_dsn = _sanitize_dsn(dsn_str)
+    return re.sub(r"^postgresql\+[a-zA-Z0-9_]+://", "postgresql://", clean_dsn)
+
+
+db_url = _sanitize_dsn(str(settings.POSTGRES_DSN))
+saver_url = _get_saver_dsn(str(settings.POSTGRES_DSN))
+
 engine: Engine = create_engine(
-    str(settings.POSTGRES_DSN),
+    db_url,
     echo=False,
     pool_pre_ping=True,
+    pool_recycle=3600,
+    connect_args={"connect_timeout": 5},
 )
 
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
@@ -25,10 +44,6 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
 
 @asynccontextmanager
 async def async_session_factory() -> AsyncGenerator[Session, None]:
-    """Async context manager that yields a sync SQLAlchemy Session by running
-    session creation/close on a worker thread. This keeps the public API async
-    while using sync SQLAlchemy internals as requested.
-    """
     def _create_session():
         return SessionLocal()
 
@@ -46,36 +61,43 @@ async def async_session_factory() -> AsyncGenerator[Session, None]:
 
 @asynccontextmanager
 async def get_db() -> AsyncGenerator[Session, None]:
-    """FastAPI dependency yielding request-scoped DB sessions (sync under the hood)."""
     async with async_session_factory() as session:
         yield session
 
 
 async def init_db() -> None:
-    # Create tables using synchronous engine
     def _create_all():
         Base.metadata.create_all(bind=engine)
 
-    await anyio.to_thread.run_sync(_create_all)
+    try:
+        await anyio.to_thread.run_sync(_create_all)
+        logger.info("Database tables initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize database tables: {e}")
 
 
-# Checkpoint saver lifecycle for LangGraph AsyncPostgresSaver
 _checkpoint_stack: AsyncExitStack | None = None
 _checkpoint_saver: Any | None = None
 
 
 async def init_checkpoint_saver() -> None:
-    """Initialize and hold the AsyncPostgresSaver instance for the app lifetime.
-
-    Enter the async context returned by AsyncPostgresSaver.from_conn_string at
-    startup and keep the saver instance for use by StateGraph.compile.
-    """
+    """Initialize AsyncPostgresSaver at app startup with explicit table migration setup."""
     global _checkpoint_stack, _checkpoint_saver
     if _checkpoint_saver is not None:
         return
+
     _checkpoint_stack = AsyncExitStack()
-    saver_cm = AsyncPostgresSaver.from_conn_string(str(settings.POSTGRES_DSN))
-    _checkpoint_saver = await _checkpoint_stack.enter_async_context(saver_cm)
+    try:
+        saver_cm = AsyncPostgresSaver.from_conn_string(saver_url)
+        _checkpoint_saver = await _checkpoint_stack.enter_async_context(saver_cm)
+        await _checkpoint_saver.setup()
+        logger.info("Postgres checkpoint saver initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize checkpoint saver on {saver_url}: {e}")
+        if _checkpoint_stack:
+            await _checkpoint_stack.aclose()
+            _checkpoint_stack = None
+        _checkpoint_saver = None
 
 
 async def close_checkpoint_saver() -> None:
@@ -91,7 +113,6 @@ def get_checkpoint_saver() -> Any | None:
 
 
 async def close_db() -> None:
-    # dispose is sync; run in thread
     def _dispose():
         engine.dispose()
 

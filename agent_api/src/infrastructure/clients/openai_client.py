@@ -31,15 +31,31 @@ class OpenRouterClient:
             base_url=self.api_base,
         )
 
-    async def chat(self, messages: List[Dict[str, str]], max_tokens: int = 512) -> str:
+    async def chat(
+        self,
+        messages: List[Dict[str, Any]],
+        max_tokens: int = 512,
+        tools: List[Dict[str, Any]] | None = None,
+        tool_choice: str | Dict[str, Any] | None = None,
+        return_raw_response: bool = False,
+    ) -> str | Any:
         logger.debug(f"OpenRouter request model={self.model}")
 
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+        }
+        if tools is not None:
+            payload["tools"] = tools
+        if tool_choice is not None:
+            payload["tool_choice"] = tool_choice
+
         try:
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,  # type: ignore[arg-type]
-                max_tokens=max_tokens,
-            )
+            response = await self.client.chat.completions.create(**payload)
+            logger.info(f"OpenRouter response: {response}")
+            if return_raw_response:
+                return response
             return response.choices[0].message.content or ""
         except Exception as err:
             logger.error(f"OpenRouter request failed: {err}")

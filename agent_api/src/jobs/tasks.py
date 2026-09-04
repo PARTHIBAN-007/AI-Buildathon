@@ -1,39 +1,42 @@
 from __future__ import annotations
 
+import asyncio
 from loguru import logger
-from src.jobs.celery_app import celery_app
+
 from src.infrastructure.clients.sarvam_client import SarvamClient
+from src.jobs.celery_app import celery_app
 
 
-def trigger_sarvam_voice_call(phone: str, payload: dict | None = None):
-    logger.info(f"Triggering Sarvam voice call task for {phone} with payload={payload}")
-    # This function will be registered as a Celery task in a real setup
-    if SarvamClient is None:
-        logger.warning("Sarvam client not available; skipping call")
-        return {"status": "skipped"}
+@celery_app.task(name="tasks.trigger_sarvam_voice_call")
+def trigger_sarvam_voice_call(phone: str, payload: dict | None = None) -> dict:
+    """Trigger an outbound Sarvam voice call for a failed-payment recovery workflow."""
+    logger.info(f"Triggering Sarvam voice call task for phone={phone} with payload={payload}")
 
-    client = SarvamClient()
-    # If Celery, this would be executed in worker process and awaitable
-    import asyncio
+    if not phone:
+        logger.warning("No phone number provided for Sarvam voice task; skipping.")
+        return {"status": "skipped", "reason": "missing_phone"}
 
-    async def _call():
+    p = payload or {}
+
+    async def _execute_call() -> dict:
+        client = SarvamClient()
         try:
             return await client.trigger_call(
-                phone,
-                checkout_id=payload.get("checkout_id") if payload else None,
-                call_summary=payload.get("call_summary") if payload else None,
-                opening_line=payload.get("opening_line") if payload else None,
-                user_name=payload.get("user_name") if payload else None,
-                connection_id=payload.get("connection_id") if payload else None,
-                agent_phone_number=payload.get("agent_phone_number") if payload else None,
-                webhook_url=payload.get("webhook_url") if payload else None,
-                lead_id=payload.get("lead_id") if payload else None,
+                phone=phone,
+                checkout_id=p.get("checkout_id"),
+                call_summary=p.get("call_summary"),
+                opening_line=p.get("opening_line"),
+                user_name=p.get("user_name"),
+                connection_id=p.get("connection_id"),
+                agent_phone_number=p.get("agent_phone_number"),
+                webhook_url=p.get("webhook_url"),
+                lead_id=p.get("lead_id"),
             )
         finally:
             await client.close()
 
     try:
-        return asyncio.get_event_loop().run_until_complete(_call())
+        return asyncio.run(_execute_call())
     except Exception as exc:
-        logger.exception(f"Sarvam call failed: {exc}")
+        logger.exception(f"Sarvam call execution failed for phone={phone}: {exc}")
         return {"status": "error", "error": str(exc)}
