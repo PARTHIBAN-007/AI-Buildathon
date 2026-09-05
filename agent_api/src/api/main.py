@@ -8,7 +8,7 @@ from src.api.cart import router as cart_router
 from src.api.payments import router as payments_router
 from src.api.webhooks.razorpay import router as razorpay_webhook_router
 from src.api.webhooks.whatsapp import router as whatsapp_webhook_router
-from src.api.webhooks.voice import router as voice_webhook_router
+from src.api.webhooks.sarvam import router as voice_webhook_router
 from src.infrastructure.postgres.core import close_db, init_db, init_checkpoint_saver, close_checkpoint_saver
 
 import sys

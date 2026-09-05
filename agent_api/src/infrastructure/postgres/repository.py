@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, List, Optional
 from uuid import UUID
 
 import anyio
@@ -11,8 +11,8 @@ from src.infrastructure.postgres.core import SessionLocal
 from src.infrastructure.postgres.models import AgentState, Checkout, ScheduledJob
 
 
-def _uuid(value: str | UUID | None) -> UUID | str | None:
-    """Safely coerces UUID or returns string/None if invalid format without raising ValueError."""
+def _uuid(value: str | UUID | None) -> UUID | None:
+    """Safely coerces UUID or returns None if invalid format without raising ValueError."""
     if value is None:
         return None
     if isinstance(value, UUID):
@@ -21,7 +21,7 @@ def _uuid(value: str | UUID | None) -> UUID | str | None:
     try:
         return UUID(val_str)
     except ValueError:
-        return val_str
+        return None
 
 
 async def create_checkout(
@@ -58,17 +58,107 @@ async def create_checkout(
     return await anyio.to_thread.run_sync(_txn)
 
 
-async def get_checkout(checkout_id: str | UUID) -> Checkout | None:
-    def _qry():
+async def update_checkout_payment_link(
+    checkout_id: str, payment_link_id: str, discount_pct: float = 0.0
+) -> None:
+    """Updates the razorpay_payment_link_id and discount_offered on the Checkout model."""
+    if not checkout_id or str(checkout_id).strip().lower() == "none":
+        return
+
+    clean_id = str(checkout_id).strip()
+
+    def _update():
         with SessionLocal() as session:
-            parsed_id = _uuid(checkout_id)
-            if parsed_id is None:
-                return None
-            result = session.execute(select(Checkout).where(Checkout.id == str(parsed_id)))
-            checkout = result.scalar_one_or_none()
+            checkout = None
+            parsed_id = _uuid(clean_id)
+            
+            if parsed_id:
+                checkout = session.get(Checkout, str(parsed_id))
+            elif clean_id.startswith("order_"):
+                checkout = session.execute(
+                    select(Checkout).where(Checkout.razorpay_order_id == clean_id)
+                ).scalars().first()
+            else:
+                checkout = session.get(Checkout, clean_id)
+                if not checkout:
+                    checkout = session.execute(
+                        select(Checkout).where(
+                            or_(
+                                Checkout.razorpay_order_id == clean_id,
+                                Checkout.razorpay_payment_link_id == clean_id,
+                            )
+                        )
+                    ).scalars().first()
+
+            if checkout:
+                checkout.razorpay_payment_link_id = payment_link_id
+                if discount_pct > 0:
+                    checkout.discount_offered = discount_pct
+                session.commit()
+
+    await anyio.to_thread.run_sync(_update)
+
+
+async def list_active_checkouts(customer_phone: str) -> List[Checkout]:
+    """Returns active unpaid Checkout ORM objects ordered by latest creation time."""
+    def _qry() -> List[Checkout]:
+        with SessionLocal() as session:
+            result = session.execute(
+                select(Checkout)
+                .where(Checkout.customer_phone == customer_phone)
+                .where(Checkout.status.not_in(["PAID", "CANCELLED"]))
+                .order_by(Checkout.created_at.desc())
+            )
+            rows = result.scalars().all()
+            for row in rows:
+                session.expunge(row)
+            return list(rows)
+
+    return await anyio.to_thread.run_sync(_qry)
+
+
+async def get_checkout(checkout_id: str | UUID) -> Optional[Checkout]:
+    """Fetches a single Checkout ORM object by ID, Razorpay Order ID, or Payment Link ID."""
+    def _qry() -> Optional[Checkout]:
+        if not checkout_id:
+            return None
+
+        clean_id = str(checkout_id).strip()
+        if not clean_id or clean_id.lower() == "none":
+            return None
+
+        with SessionLocal() as session:
+            # 1. Direct query by order_ ID
+            if clean_id.startswith("order_"):
+                stmt = select(Checkout).where(Checkout.razorpay_order_id == clean_id)
+                row = session.execute(stmt).scalars().first()
+                if row:
+                    session.expunge(row)
+                    return row
+
+            # 2. Query by UUID or string primary key ID
+            parsed_id = _uuid(clean_id)
+            target_id = str(parsed_id) if parsed_id else clean_id
+
+            stmt = select(Checkout).where(Checkout.id == target_id)
+            checkout = session.execute(stmt).scalars().first()
             if checkout:
                 session.expunge(checkout)
-            return checkout
+                return checkout
+
+            # 3. Fallback: match razorpay_order_id or payment_link_id
+            stmt = select(Checkout).where(
+                or_(
+                    Checkout.razorpay_order_id == clean_id,
+                    Checkout.razorpay_payment_link_id == clean_id,
+                )
+            )
+            checkout = session.execute(stmt).scalars().first()
+            if checkout:
+                session.expunge(checkout)
+                return checkout
+
+            return None
 
     return await anyio.to_thread.run_sync(_qry)
 
@@ -82,15 +172,25 @@ async def find_checkout_by_ids(
     """Finds a checkout record matching checkout_id, razorpay_payment_link_id, or razorpay_order_id."""
     def _qry():
         with SessionLocal() as session:
-            parsed_id = _uuid(checkout_id) if checkout_id else None
+            raw_checkout_id = str(checkout_id).strip() if checkout_id else None
+            effective_order_id = razorpay_order_id
+
+            # If LLM passed order_... inside checkout_id, route it to order ID filter
+            if raw_checkout_id and raw_checkout_id.startswith("order_") and not effective_order_id:
+                effective_order_id = raw_checkout_id
+
+            parsed_id = _uuid(raw_checkout_id) if raw_checkout_id else None
             conditions = []
             
             if parsed_id:
                 conditions.append(Checkout.id == str(parsed_id))
+            elif raw_checkout_id and not raw_checkout_id.startswith("order_"):
+                conditions.append(Checkout.id == raw_checkout_id)
+
             if razorpay_payment_link_id:
                 conditions.append(Checkout.razorpay_payment_link_id == razorpay_payment_link_id)
-            if razorpay_order_id:
-                conditions.append(Checkout.razorpay_order_id == razorpay_order_id)
+            if effective_order_id:
+                conditions.append(Checkout.razorpay_order_id == effective_order_id)
 
             if not conditions:
                 return None
@@ -119,7 +219,13 @@ async def upsert_checkout(
         with SessionLocal() as session:
             try:
                 checkout = None
-                parsed_id = _uuid(checkout_id) if checkout_id else None
+                raw_checkout_id = str(checkout_id).strip() if checkout_id else None
+                effective_order_id = razorpay_order_id
+
+                if raw_checkout_id and raw_checkout_id.startswith("order_") and not effective_order_id:
+                    effective_order_id = raw_checkout_id
+
+                parsed_id = _uuid(raw_checkout_id) if raw_checkout_id else None
 
                 if parsed_id:
                     checkout = session.get(Checkout, str(parsed_id))
@@ -127,17 +233,17 @@ async def upsert_checkout(
                     checkout = session.execute(
                         select(Checkout).where(Checkout.razorpay_payment_link_id == razorpay_payment_link_id)
                     ).scalar_one_or_none()
-                if checkout is None and razorpay_order_id:
+                if checkout is None and effective_order_id:
                     checkout = session.execute(
-                        select(Checkout).where(Checkout.razorpay_order_id == razorpay_order_id)
+                        select(Checkout).where(Checkout.razorpay_order_id == effective_order_id)
                     ).scalar_one_or_none()
 
                 now = datetime.now(timezone.utc)
 
                 if checkout:
                     checkout.status = status
-                    if razorpay_order_id:
-                        checkout.razorpay_order_id = razorpay_order_id
+                    if effective_order_id:
+                        checkout.razorpay_order_id = effective_order_id
                     if razorpay_payment_link_id:
                         checkout.razorpay_payment_link_id = razorpay_payment_link_id
                     if customer_phone and customer_phone != "UNKNOWN":
@@ -150,7 +256,7 @@ async def upsert_checkout(
                         customer_phone=customer_phone,
                         cart_items=cart_items or [],
                         total_amount=float(total_amount),
-                        razorpay_order_id=razorpay_order_id,
+                        razorpay_order_id=effective_order_id,
                         razorpay_payment_link_id=razorpay_payment_link_id,
                         status=status,
                     )
@@ -185,30 +291,21 @@ async def list_checkouts_by_phone(customer_phone: str) -> list[Checkout]:
     return await anyio.to_thread.run_sync(_qry)
 
 
-async def list_active_checkouts(customer_phone: str) -> list[dict[str, Any]]:
+async def get_checkout_by_razorpay_order_id(razorpay_order_id: str) -> Optional[Checkout]:
+    """Fetch a Checkout record by its associated Razorpay order_id."""
+    if not razorpay_order_id or not str(razorpay_order_id).strip():
+        return None
+
+    clean_order_id = str(razorpay_order_id).strip()
+
     def _qry():
         with SessionLocal() as session:
-            result = session.execute(
-                select(Checkout)
-                .where(Checkout.customer_phone == customer_phone)
-                .where(Checkout.status.not_in(["PAID", "CANCELLED"]))
-                .order_by(Checkout.created_at.desc())
-            )
-            rows = result.scalars().all()
-            return [
-                {
-                    "id": str(row.id),
-                    "customer_phone": row.customer_phone,
-                    "razorpay_order_id": row.razorpay_order_id,
-                    "razorpay_payment_link_id": row.razorpay_payment_link_id,
-                    "cart_items": row.cart_items,
-                    "total_amount": float(row.total_amount),
-                    "status": row.status,
-                    "discount_offered": float(row.discount_offered or 0.0),
-                    "created_at": row.created_at.isoformat() if row.created_at else None,
-                }
-                for row in rows
-            ]
+            stmt = select(Checkout).where(Checkout.razorpay_order_id == clean_order_id)
+            result = session.execute(stmt)
+            row = result.scalars().first()
+            if row:
+                session.expunge(row)
+            return row
 
     return await anyio.to_thread.run_sync(_qry)
 
@@ -223,12 +320,20 @@ async def update_checkout_status(
     def _txn():
         with SessionLocal() as session:
             try:
+                checkout = None
+                raw_id = str(checkout_id).strip() if checkout_id else ""
                 parsed_id = _uuid(checkout_id)
-                if parsed_id is None:
-                    return None
-                checkout = session.get(Checkout, str(parsed_id))
+
+                if parsed_id:
+                    checkout = session.get(Checkout, str(parsed_id))
+                elif raw_id.startswith("order_"):
+                    checkout = session.execute(
+                        select(Checkout).where(Checkout.razorpay_order_id == raw_id)
+                    ).scalars().first()
+
                 if checkout is None:
                     return None
+
                 if status is not None:
                     checkout.status = status
                 if razorpay_order_id is not None:
@@ -236,6 +341,41 @@ async def update_checkout_status(
                 if razorpay_payment_link_id is not None:
                     checkout.razorpay_payment_link_id = razorpay_payment_link_id
                 checkout.updated_at = datetime.now(timezone.utc)
+                
+                session.commit()
+                session.refresh(checkout)
+                session.expunge(checkout)
+                return checkout
+            except Exception:
+                session.rollback()
+                raise
+
+    return await anyio.to_thread.run_sync(_txn)
+
+
+async def record_checkout_call(checkout_id: str | UUID) -> Checkout | None:
+    """Increments call_attempt_count and updates last_call_triggered_at timestamp."""
+    def _txn():
+        with SessionLocal() as session:
+            try:
+                checkout = None
+                raw_id = str(checkout_id).strip() if checkout_id else ""
+                parsed_id = _uuid(checkout_id)
+
+                if parsed_id:
+                    checkout = session.get(Checkout, str(parsed_id))
+                elif raw_id.startswith("order_"):
+                    checkout = session.execute(
+                        select(Checkout).where(Checkout.razorpay_order_id == raw_id)
+                    ).scalars().first()
+
+                if checkout is None:
+                    return None
+                
+                checkout.call_attempt_count = (checkout.call_attempt_count or 0) + 1
+                checkout.last_call_triggered_at = datetime.now(timezone.utc)
+                checkout.updated_at = datetime.now(timezone.utc)
+                
                 session.commit()
                 session.refresh(checkout)
                 session.expunge(checkout)
@@ -265,7 +405,7 @@ async def create_scheduled_job(
                     checkout_id=str(parsed_fk) if parsed_fk is not None else None,
                     celery_task_id=celery_task_id,
                     job_type=job_type,
-                    scheduled_at = scheduled_at,
+                    scheduled_at=scheduled_at,
                     status=status,
                 )
                 session.add(job)

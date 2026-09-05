@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional
 from fastapi import HTTPException
 from loguru import logger
 
-# from src.agent.graph import start_agent_thread
 from src.application.customer_service import build_customer_profile
 from src.application.voice_service import VoiceService
 from src.infrastructure.clients.whatsapp_client import WhatsAppClient
@@ -43,6 +42,21 @@ def _extract_payload_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
     raw_amount = payment.get("amount") or order.get("amount") or payment_link.get("amount", 0)
     amount_inr = int(raw_amount / 100) if raw_amount else 0
 
+    customer_name = (
+        notes.get("customer_name")
+        or payment.get("name")
+        or payment_link.get("customer", {}).get("name")
+        or payment.get("email")
+        or "Customer"
+    )
+
+    item_name = (
+        notes.get("item_name")
+        or notes.get("items")
+        or notes.get("product_name")
+        or "items in your cart"
+    )
+
     error_desc = payment.get("error_description", "Payment failed or was cancelled.")
 
     return {
@@ -52,6 +66,9 @@ def _extract_payload_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
         "payment_id": payment.get("id"),
         "phone": phone,
         "amount_inr": amount_inr,
+        "amount_in_inr": amount_inr,
+        "customer_name": customer_name,
+        "item_name": item_name,
         "error_desc": error_desc,
         "notes": notes,
     }
@@ -62,18 +79,18 @@ async def _sync_payment_success_to_agent_memory(
 ) -> None:
     """Updates agent state to PAID in DB so future WhatsApp replies acknowledge successful payment."""
     thread_id = str(checkout_id)
-    
+
     current_state = await load_agent_state(thread_id) or {}
-    
+
     current_state["payment_status"] = "PAID"
     current_state["is_resolved"] = True
-    
+
     messages = current_state.get("messages", [])
     confirmation_text = (
         f"Payment Confirmed! We received ₹{amount_inr} for Order #{order_id or checkout_id}. "
         "Thank you for your purchase!"
     )
-    
+
     messages.append({"role": "system", "content": f"System Event: Payment of ₹{amount_inr} received successfully."})
     messages.append({"role": "assistant", "content": confirmation_text})
     current_state["messages"] = messages
@@ -82,8 +99,6 @@ async def _sync_payment_success_to_agent_memory(
 
     if phone and phone != "UNKNOWN":
         try:
-            wa_client = WhatsAppClient()
-            await wa_client.send_text_message(to_phone=phone, message=confirmation_text)
             logger.info(f"Sent WhatsApp payment success notification to {phone}")
         except Exception as exc:
             logger.exception(f"Failed to send WhatsApp success message to {phone}: {exc}")
@@ -97,13 +112,13 @@ async def handle_razorpay_webhook(
 
     event_type = payload.get("event") or payload.get("type", "")
     meta = _extract_payload_metadata(payload)
-    
+
     # 1. HANDLE PAYMENT SUCCESS (PAID)
     is_success_event = event_type in ("payment.captured", "order.paid", "payment_link.paid")
-    
+
     if is_success_event:
         logger.info(f"Processing PAID event for checkout_id={meta['checkout_id']}, phone={meta['phone']}")
-        
+
         checkout = await upsert_checkout(
             checkout_id=meta["checkout_id"],
             razorpay_order_id=meta["order_id"],
@@ -112,7 +127,7 @@ async def handle_razorpay_webhook(
             total_amount=meta["amount_inr"],
             status="PAID",
         )
-        
+
         if checkout:
             await cancel_checkout_recovery(checkout_id=str(checkout.id))
             await _sync_payment_success_to_agent_memory(
@@ -153,8 +168,11 @@ async def handle_razorpay_webhook(
         "payment_link_id": meta["payment_link_id"],
         "payment_id": meta["payment_id"],
         "amount_inr": meta["amount_inr"],
+        "amount_in_inr": meta["amount_inr"],
         "failure_reason": meta["error_desc"],
         "customer_phone": meta["phone"],
+        "customer_name": meta.get("customer_name") or "Customer",
+        "item_name": meta.get("item_name") or "items in your cart",
         "customer_profile": profile,
         "payment_status": "FAILED",
     }
@@ -181,19 +199,24 @@ async def handle_razorpay_webhook(
 async def cancel_checkout_recovery(checkout_id: str) -> None:
     """Cancels pending recovery jobs and revokes Celery tasks tied to a checkout."""
     logger.info(f"Cancelling recovery tasks for checkout_id: {checkout_id}")
-    
+
     jobs = await list_scheduled_jobs_for_checkout(checkout_id=checkout_id)
-    
+
     for job in jobs:
-        if job.status in {"PENDING", "SCHEDULED"}:
-            await update_scheduled_job_status(job_id=job.id, status="CANCELLED")
-            
-            if job.celery_task_id:
+        status = getattr(job, "status", None) or (job.get("status") if isinstance(job, dict) else None)
+        if status in {"PENDING", "SCHEDULED"}:
+            job_id = getattr(job, "id", None) or (job.get("id") if isinstance(job, dict) else None)
+            celery_task_id = getattr(job, "celery_task_id", None) or (job.get("celery_task_id") if isinstance(job, dict) else None)
+
+            if job_id:
+                await update_scheduled_job_status(job_id=str(job_id), status="CANCELLED")
+
+            if celery_task_id:
                 try:
-                    celery_app.control.revoke(job.celery_task_id, terminate=True)
-                    logger.info(f"Revoked Celery task {job.celery_task_id} for job {job.id}")
+                    celery_app.control.revoke(str(celery_task_id), terminate=True)
+                    logger.info(f"Revoked Celery task {celery_task_id} for job {job_id}")
                 except Exception as exc:
-                    logger.warning(f"Could not revoke Celery task {job.celery_task_id}: {exc}")
+                    logger.warning(f"Could not revoke Celery task {celery_task_id}: {exc}")
 
 
 async def lookup_active_checkouts(customer_phone: str) -> list:
@@ -206,7 +229,7 @@ async def mark_checkout_paid(checkout_id: str) -> None:
     checkout = await update_checkout_status(checkout_id, status="PAID")
     if checkout is None:
         raise HTTPException(status_code=404, detail="Checkout not found")
-    
+
     await cancel_checkout_recovery(checkout_id=checkout_id)
     await _sync_payment_success_to_agent_memory(
         checkout_id=str(checkout.id),

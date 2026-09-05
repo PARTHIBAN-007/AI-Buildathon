@@ -33,7 +33,7 @@ const products = [
     badge: 'Top Rated',
     accent: 'bg-[#e8d7c7]',
     image:
-      'https://images.unsplash.com/photo-1563294328-23b5acefa4f8?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1527814050087-3793815479db?auto=format&fit=crop&w=900&q=80',
   },
   {
     id: 4,
@@ -55,7 +55,7 @@ const products = [
     badge: 'Desk Essential',
     accent: 'bg-[#e9d8c8]',
     image:
-      'https://images.unsplash.com/photo-1585771724684-38269d6639fd?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=80',
   },
   {
     id: 6,
@@ -77,7 +77,7 @@ const products = [
     badge: 'Smart Setup',
     accent: 'bg-[#ebdfd4]',
     image:
-      'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=900&q=80',
   },
   {
     id: 8,
@@ -88,7 +88,7 @@ const products = [
     badge: 'Home Tech',
     accent: 'bg-[#f3e6d9]',
     image:
-      'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=900&q=80',
   },
   {
     id: 9,
@@ -110,7 +110,7 @@ const products = [
     badge: 'New Arrival',
     accent: 'bg-[#e7d9c8]',
     image:
-      'https://images.unsplash.com/photo-1621259182978-f8f2c1d92c7a?auto=format&fit=crop&w=900&q=80',
+      'https://images.unsplash.com/photo-1552820728-8b83bb6b773f?auto=format&fit=crop&w=900&q=80',
   },
   {
     id: 11,
@@ -184,7 +184,13 @@ function App() {
 
     try {
       const amount = total + 399 + 299
-      const payload = { amount_in_inr: Math.round(amount) }
+      const payload = {
+        amount_in_inr: Math.round(amount),
+        customer: {
+          name: formData.name,
+          email: formData.email,
+        },
+      }
 
       const res = await fetch('http://127.0.0.1:8000/payments/create-order', {
         method: 'POST',
@@ -222,8 +228,8 @@ function App() {
         key: data.key_id || order.key_id || '',
         amount: order.amount || payload.amount_in_inr * 100,
         currency: order.currency || 'INR',
-        name: 'Gadgets Shop',
-        description: payload.description || 'Purchase from Gadgets store',
+        name: 'VectorTech',
+        description: payload.description || 'Purchase from VectorTech store',
         order_id: order.id || order.order_id,
         prefill: { name: formData.name, email: formData.email },
         handler: async function (response) {
@@ -296,8 +302,7 @@ function App() {
           <div className="flex items-center gap-3">
             
             <div className="leading-tight">
-              <p className="text-[10px] uppercase tracking-[0.28em] text-[#7e5b45]">Tech</p>
-              <h1 className="text-lg font-semibold tracking-[-0.04em] text-[#221b18]">Gadgets</h1>
+              <h1 className="text-lg font-semibold tracking-[-0.04em] text-[#221b18]">VectorTech</h1>
             </div>
           </div>
 

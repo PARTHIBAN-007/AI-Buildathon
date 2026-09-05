@@ -1,7 +1,6 @@
 ﻿from functools import lru_cache
 from typing import Optional
-
-from pydantic import Field, computed_field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +11,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Server / Webhook Domain
+    NGROK_URL: Optional[str] = Field(default=None, alias="NGROK_URL")
 
     # Database
     POSTGRES_DSN: str = Field(
@@ -19,21 +20,18 @@ class Settings(BaseSettings):
         alias="POSTGRES_DSN",
     )
 
-    # Optional explicit Celery overrides (falls back to POSTGRES_DSN)
+    # Celery
     CELERY_BROKER_URL: Optional[str] = Field(default=None, alias="CELERY_BROKER_URL")
     CELERY_RESULT_BACKEND: Optional[str] = Field(default=None, alias="CELERY_RESULT_BACKEND")
 
-    # Exotel
-    EXOTEL_BASE_URL: Optional[str] = Field(default=None, alias="EXOTEL_BASE_URL")
-    EXOTEL_ACCOUNT_SID: Optional[str] = Field(default=None, alias="EXOTEL_ACCOUNT_SID")
-    EXOTEL_API_KEY: Optional[str] = Field(default=None, alias="EXOTEL_API_KEY")
-    EXOTEL_API_TOKEN: Optional[str] = Field(default=None, alias="EXOTEL_API_TOKEN")
-    EXOTEL_PHONE_NUMBER: Optional[str] = Field(default=None, alias="EXOTEL_PHONE_NUMBER")
-
-    # Sarvam
+    # Sarvam Outbound Voice API
     SARVAM_API_KEY: Optional[str] = Field(default=None, alias="SARVAM_API_KEY")
-    ORG_ID: Optional[str] = Field(default=None, alias="ORG_ID")
-    WORKSPACE_ID: Optional[str] = Field(default=None, alias="WORKSPACE_ID")
+    SARVAM_ORG_ID: Optional[str] = Field(default=None, alias="SARVAM_ORG_ID")
+    SARVAM_WORKSPACE_ID: Optional[str] = Field(default=None, alias="SARVAM_WORKSPACE_ID")
+    SARVAM_APP_ID: Optional[str] = Field(default=None, alias="SARVAM_APP_ID")
+    SARVAM_APP_VERSION: str = Field(default="1", alias="SARVAM_APP_VERSION")
+    SARVAM_CONNECTION_ID: Optional[str] = Field(default=None, alias="SARVAM_CONNECTION_ID")
+    SARVAM_AGENT_PHONE_NUMBER: Optional[str] = Field(default=None, alias="SARVAM_AGENT_PHONE_NUMBER")
 
     # Razorpay
     RAZORPAY_API_KEY: Optional[str] = Field(default=None, alias="RAZORPAY_API_KEY")
@@ -45,7 +43,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_BASE: str = Field(default="https://openrouter.ai/api/v1", alias="OPENROUTER_API_BASE")
     OPENROUTER_MODEL: str = Field(default="openai/gpt-5.6-luna", alias="OPENROUTER_MODEL")
 
-    # Meta
+    # Meta / WhatsApp
     META_APP_ID: Optional[str] = Field(default=None, alias="META_APP_ID")
     META_ACCESS_TOKEN: Optional[str] = Field(default=None, alias="META_ACCESS_TOKEN")
     META_PHONE_NUMBER_ID: Optional[str] = Field(default=None, alias="META_PHONE_NUMBER_ID")
@@ -55,12 +53,16 @@ class Settings(BaseSettings):
 
     @property
     def SARVAM_BASE_URL(self) -> str:
-        org = self.ORG_ID or ""
-        ws = self.WORKSPACE_ID or ""
+        org = self.SARVAM_ORG_ID 
+        ws = self.SARVAM_WORKSPACE_ID 
         return f"https://apps.sarvam.ai/api/outbounds/v1/orgs/{org}/workspaces/{ws}/outbounds"
 
+    @property
+    def SARVAM_WEBHOOK_URL(self) -> str:
+        ngrok = self.NGROK_URL
+        return f"{ngrok}/sarvam"
+
     def _get_base_postgres_url(self) -> str:
-        """Strips driver prefixes like +psycopg2 or +asyncpg for Celery Kombu compatibility."""
         return (
             self.POSTGRES_DSN
             .replace("postgresql+psycopg2://", "postgresql://")
@@ -78,6 +80,7 @@ class Settings(BaseSettings):
         if self.CELERY_RESULT_BACKEND:
             return self.CELERY_RESULT_BACKEND
         return self._get_base_postgres_url().replace("postgresql://", "db+postgresql://")
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

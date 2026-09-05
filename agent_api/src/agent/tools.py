@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
-from typing import Any, Optional
+from typing import Any, Dict, Optional
+from uuid import UUID
 
 from loguru import logger
 from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
 
 from src.agent.prompts import SYSTEM_PROMPT
 from src.application.whatsapp_service import WhatsAppService
@@ -13,11 +14,69 @@ from src.application.payment_service import PaymentService
 from src.application.voice_service import VoiceService
 from src.infrastructure.clients.openai_client import OpenRouterClient
 from src.application.recovery_service import cancel_checkout_recovery
-from src.infrastructure.postgres.repository import get_checkout, list_scheduled_jobs_for_checkout
+from src.infrastructure.postgres.repository import get_checkout, get_checkout_by_razorpay_order_id, update_checkout_payment_link
 
 whatsapp = WhatsAppService()
 payment = PaymentService()
-voice = VoiceService()
+
+
+
+
+
+
+
+
+def _get_val(obj: Any, key: str, default: Any = None) -> Any:
+    """Safely extracts an attribute or dict key from a checkout model or object."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+async def _resolve_checkout_entity(
+    checkout_id_or_ref: Optional[str],
+    config: Optional[RunnableConfig] = None,
+) -> Any | None:
+    """Resolves DB checkout entity from UUID, Razorpay Order ID, or RunnableConfig context."""
+    target_id = None
+    if checkout_id_or_ref and str(checkout_id_or_ref).strip() and str(checkout_id_or_ref).strip().lower() != "none":
+        target_id = str(checkout_id_or_ref).strip()
+
+    if not target_id and config and isinstance(config, dict):
+        configurable = config.get("configurable", {})
+        thread_id = configurable.get("thread_id") or configurable.get("checkout_id")
+        if thread_id and str(thread_id) != "default_thread":
+            target_id = str(thread_id)
+
+    if not target_id:
+        return None
+
+    try:
+        checkout = await get_checkout(target_id)
+        if not checkout and target_id.startswith("order_"):
+            checkout = await get_checkout_by_razorpay_order_id(target_id)
+        return checkout
+    except Exception as e:
+        logger.warning(f"Failed to resolve checkout by ID/ref '{target_id}': {e}")
+        return None
+
+
+def _sanitize_phone(phone_number: Optional[str], fallback_phone: Optional[str]) -> str:
+    """Ensures phone_number isn't a UUID or order string passed by mistake."""
+    if not phone_number:
+        return fallback_phone or ""
+
+    val = str(phone_number).strip()
+    if val.startswith("order_"):
+        return fallback_phone or ""
+
+    try:
+        UUID(val)
+        return fallback_phone or ""
+    except ValueError:
+        return val
 
 
 @tool
@@ -30,61 +89,122 @@ async def send_whatsapp_message(phone_number: str, text: str) -> dict:
         logger.error(f"WhatsApp tool error: {e}")
         return {"success": False, "error": str(e)}
 
+
 @tool
-async def generate_payment_link(phone_number: str, amount_in_inr: int) -> str:
+async def generate_payment_link(
+    phone_number: str,
+    amount_in_inr: float,
+    checkout_id: Optional[str] = None,
+    config: Optional[RunnableConfig] = None,
+) -> str:
     """Generates a standard, full-price payment retry link."""
-    # Added async/await here
-    return await payment.create_payment_link(
-        amount_in_inr=amount_in_inr, 
-        description=f"Payment recovery for {phone_number}"
-    )
+    try:
+        checkout = await _resolve_checkout_entity(checkout_id, config)
+
+        real_db_checkout_id = str(_get_val(checkout, "id")) if checkout else None
+        db_phone = _get_val(checkout, "customer_phone") if checkout else None
+        valid_phone = _sanitize_phone(phone_number, fallback_phone=db_phone)
+
+        result = await payment.create_payment_link(
+            amount_in_inr=int(amount_in_inr),
+            description=f"Payment recovery for {valid_phone or 'customer'}",
+            checkout_id=real_db_checkout_id,
+            customer={"contact": valid_phone} if valid_phone else None,
+        )
+
+        if isinstance(result, dict):
+            plink_id = result.get("id")
+            short_url = result.get("short_url") or result.get("payment_link") or ""
+
+            if real_db_checkout_id and plink_id:
+                await update_checkout_payment_link(
+                    checkout_id=real_db_checkout_id,
+                    payment_link_id=str(plink_id),
+                )
+
+            return short_url or str(result)
+
+        return str(result)
+    except Exception as e:
+        logger.error(f"Generate payment link tool error: {e}")
+        return f"Error generating payment link: {e}"
 
 
 @tool
-async def generate_discounted_payment_link(phone_number: str, amount_in_inr: float, discount_pct: float = 0.0) -> dict:
+async def generate_discounted_payment_link(
+    phone_number: str,
+    amount_in_inr: float,
+    discount_pct: float = 0.0,
+    checkout_id: Optional[str] = None,
+    config: Optional[RunnableConfig] = None,
+) -> dict:
     """Generate a discounted Razorpay payment link for the customer phone number."""
     try:
-        logger.info(f"Tool: generate_discounted_payment_link for {phone_number} discount={discount_pct}")
+        checkout = await _resolve_checkout_entity(checkout_id, config)
+
+        real_db_checkout_id = str(_get_val(checkout, "id")) if checkout else None
+        db_phone = _get_val(checkout, "customer_phone") if checkout else None
+        valid_phone = _sanitize_phone(phone_number, fallback_phone=db_phone)
+
         discount_pct = max(0.0, min(100.0, float(discount_pct)))
         discounted_amount = max(1.0, float(amount_in_inr) * (1.0 - discount_pct / 100.0))
-        return await payment.create_payment_link(
+
+        logger.info(f"Tool: generate_discounted_payment_link for {valid_phone} discount={discount_pct}%")
+
+        result = await payment.create_payment_link(
             amount_in_inr=int(discounted_amount),
-            description=f"Discounted recovery payment for {phone_number}"
+            description=f"Discounted recovery payment for {valid_phone or 'customer'}",
+            checkout_id=real_db_checkout_id,
+            customer={"contact": valid_phone} if valid_phone else None,
         )
+
+        payment_url = ""
+        if isinstance(result, dict):
+            plink_id = result.get("id")
+            payment_url = result.get("short_url") or result.get("payment_link") or ""
+
+            if real_db_checkout_id and plink_id:
+                await update_checkout_payment_link(
+                    checkout_id=real_db_checkout_id,
+                    payment_link_id=str(plink_id),
+                    discount_pct=discount_pct,
+                )
+
+        return {
+            "success": True,
+            "payment_link": payment_url or str(result),
+            "discounted_amount": discounted_amount,
+            "checkout_id": real_db_checkout_id,
+        }
     except Exception as e:
-        logger.error(f"Payment link tool error: {e}")
+        logger.error(f"Discounted payment link tool error: {e}")
         return {"success": False, "error": str(e)}
 
+
 @tool
-async def schedule_voice_call(checkout_id: str, phone_number: str, eta_seconds: int = 3600) -> dict:
-    """Schedule an automated voice recovery call for a checkout_id after eta_seconds delay."""
+async def reschedule_voice_call(
+    new_eta_seconds: int,
+    checkout_id: Optional[str] = None,
+    customer_name: Optional[str] = None,
+    item_name: Optional[str] = None,
+    config: Optional[RunnableConfig] = None,
+) -> dict:
+    """Reschedule an existing scheduled voice call strictly for a target checkout_id."""
     try:
-        logger.info(f"Tool: schedule_voice_call for checkout={checkout_id}, phone={phone_number} in {eta_seconds}s")
+        checkout = await _resolve_checkout_entity(checkout_id, config)
+        if not checkout:
+            return {"success": False, "error": "Missing checkout_id context for rescheduling call."}
+
+        target_checkout_id = str(_get_val(checkout, "id"))
+        phone = _get_val(checkout, "customer_phone")
+        logger.info(f"Tool: reschedule_voice_call checkout={target_checkout_id} to {new_eta_seconds}s")
+
         service = VoiceService()
-        result = await service.schedule_call(
-            phone=phone_number,
-            eta_seconds=int(eta_seconds),
-            checkout_id=checkout_id,
+        result = await service.reschedule_call(
+            checkout_id=target_checkout_id,
+            new_eta_seconds=int(new_eta_seconds),
+            phone=phone,
         )
-        return {"success": True, "data": result}
-    except Exception as e:
-        logger.error(f"Schedule call tool error: {e}")
-        return {"success": False, "error": str(e)}
-
-
-@tool
-async def reschedule_voice_call(checkout_id: str, new_eta_seconds: int) -> dict:
-    """Reschedule an existing scheduled voice call for a checkout_id to a new ETA in seconds."""
-    try:
-        logger.info(f"Tool: reschedule_voice_call checkout={checkout_id} to {new_eta_seconds}s")
-        jobs = await list_scheduled_jobs_for_checkout(checkout_id=checkout_id)
-        active_jobs = [j for j in jobs if j.status in {"SCHEDULED", "PENDING"}]
-
-        if not active_jobs:
-            return {"success": False, "error": f"No active scheduled call found for checkout_id={checkout_id}"}
-
-        service = VoiceService()
-        result = await service.reschedule_call(job_id=active_jobs[0].id, new_eta_seconds=int(new_eta_seconds))
         return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Reschedule call tool error: {e}")
@@ -92,33 +212,47 @@ async def reschedule_voice_call(checkout_id: str, new_eta_seconds: int) -> dict:
 
 
 @tool
-async def cancel_recovery_workflow(checkout_id: str) -> dict:
-    """Cancel all active recovery tasks and scheduled voice calls for a given checkout_id."""
+async def cancel_recovery_workflow(
+    checkout_id: Optional[str] = None,
+    config: Optional[RunnableConfig] = None,
+) -> dict:
+    """Cancel all active recovery tasks and scheduled voice calls strictly for a given checkout_id."""
     try:
-        logger.info(f"Tool: cancel_recovery_workflow checkout_id={checkout_id}")
-        await cancel_checkout_recovery(checkout_id=checkout_id)
-        return {"status": "cancelled", "success": True, "checkout_id": checkout_id}
+        checkout = await _resolve_checkout_entity(checkout_id, config)
+        if not checkout:
+            return {"success": False, "error": "Missing checkout_id context for cancellation."}
+
+        db_checkout_id = str(_get_val(checkout, "id"))
+        logger.info(f"Tool: cancel_recovery_workflow checkout_id={db_checkout_id}")
+
+        await cancel_checkout_recovery(checkout_id=db_checkout_id)
+        return {"status": "cancelled", "success": True, "checkout_id": db_checkout_id}
     except Exception as e:
         logger.error(f"Cancel recovery tool error: {e}")
         return {"success": False, "error": str(e)}
 
 
 @tool
-async def verify_payment_status(checkout_id: str) -> dict:
-    """Verify payment status for a given checkout_id in PostgreSQL source of truth."""
+async def verify_payment_status(
+    checkout_id: Optional[str] = None,
+    config: Optional[RunnableConfig] = None,
+) -> dict:
+    """Verify payment status strictly for a given checkout_id in PostgreSQL."""
     try:
-        logger.info(f"Tool: verify_payment_status checkout_id={checkout_id}")
-        checkout = await get_checkout(checkout_id)
+        checkout = await _resolve_checkout_entity(checkout_id, config)
         if not checkout:
-            return {"success": False, "error": f"Checkout ID '{checkout_id}' not found in database."}
+            return {"success": False, "error": "Checkout record not found in database."}
+
+        raw_amount = _get_val(checkout, "total_amount")
+        amount_val = float(raw_amount) if raw_amount is not None else 0.0
 
         return {
             "success": True,
-            "checkout_id": checkout.id,
-            "status": checkout.status,
-            "amount_inr": checkout.total_amount,
-            "phone": checkout.customer_phone,
-            "order_id": checkout.razorpay_order_id,
+            "checkout_id": str(_get_val(checkout, "id")),
+            "status": _get_val(checkout, "status"),
+            "amount_inr": amount_val,
+            "phone": _get_val(checkout, "customer_phone"),
+            "order_id": _get_val(checkout, "razorpay_order_id"),
         }
     except Exception as e:
         logger.error(f"Verify payment tool error: {e}")
@@ -126,23 +260,42 @@ async def verify_payment_status(checkout_id: str) -> dict:
 
 
 @tool
-async def trigger_immediate_voice_call(phone_number: str, checkout_id: Optional[str] = None) -> dict:
-    """Trigger an immediate outbound voice call to the customer phone number."""
+async def trigger_immediate_voice_call(
+    phone_number: str,
+    checkout_id: Optional[str] = None,
+    customer_name: Optional[str] = None,
+    amount_in_inr: Optional[float] = None,
+    item_name: Optional[str] = None,
+    config: Optional[RunnableConfig] = None,
+) -> dict:
+    """Trigger an immediate outbound voice call strictly for a checkout_id."""
     try:
-        logger.info(f"Tool: trigger_immediate_voice_call phone={phone_number}, checkout_id={checkout_id}")
+        checkout = await _resolve_checkout_entity(checkout_id, config)
+        db_checkout_id = str(_get_val(checkout, "id")) if checkout else checkout_id
+
+        logger.info(f"Tool: trigger_immediate_voice_call phone={phone_number}, checkout_id={db_checkout_id}")
+
+        metadata: Dict[str, Any] = {}
+        if customer_name:
+            metadata["customer_name"] = customer_name
+        if item_name:
+            metadata["item_name"] = item_name
+
+        if amount_in_inr is not None:
+            metadata["amount_in_inr"] = float(amount_in_inr)
+        elif checkout and _get_val(checkout, "total_amount") is not None:
+            metadata["amount_in_inr"] = float(_get_val(checkout, "total_amount"))
+
         service = VoiceService()
-        result = await service.trigger_immediate_call(phone=phone_number, checkout_id=checkout_id)
+        result = await service.trigger_immediate_call(
+            phone=phone_number,
+            checkout_id=db_checkout_id,
+            metadata=metadata,
+        )
         return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Trigger call tool error: {e}")
         return {"success": False, "error": str(e)}
-
-
-# @tool
-# async def get_product_catalog_info(product_id: str) -> dict:
-#     """Return lightweight product catalog record for the given product identifier."""
-#     return {"product_id": product_id, "title": "Checkout Item", "return_policy": "7 days"}
-
 
 async def summarizer(context: dict | None = None, messages: list | None = None, max_tokens: int = 256) -> str:
     client = OpenRouterClient()
@@ -153,9 +306,12 @@ async def summarizer(context: dict | None = None, messages: list | None = None, 
         if context:
             parts.append(f"Context: {context}")
         if messages:
-            clean_msgs = [m if isinstance(m, dict) else {"role": getattr(m, "type", "user"), "content": str(getattr(m, "content", ""))} for m in messages]
+            clean_msgs = [
+                m if isinstance(m, dict) else {"role": getattr(m, "type", "user"), "content": str(getattr(m, "content", ""))}
+                for m in messages
+            ]
             parts.append(f"Recent messages: {clean_msgs}")
-        
+
         prompt = "\n\n".join(parts)
         payload = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -170,7 +326,6 @@ async def summarizer(context: dict | None = None, messages: list | None = None, 
 
 
 tools = [
-    schedule_voice_call,
     reschedule_voice_call,
     cancel_recovery_workflow,
     verify_payment_status,
@@ -188,14 +343,16 @@ TOOL_DEFINITIONS = [
         "function": {
             "name": tool_fn.name,
             "description": tool_fn.description,
-            "parameters": tool_fn.args_schema.model_json_schema() if hasattr(tool_fn.args_schema, "model_json_schema") else tool_fn.args_schema.schema(),
+            "parameters": tool_fn.args_schema.model_json_schema()
+            if hasattr(tool_fn.args_schema, "model_json_schema")
+            else tool_fn.args_schema.schema(),
         },
     }
     for tool_fn in tools
 ]
 
 
-async def tool_node(state: dict):
+async def tool_node(state: dict, config: Optional[RunnableConfig] = None):
     results = []
     messages = state.get("messages", [])
     if not messages:
@@ -240,9 +397,9 @@ async def tool_node(state: dict):
 
         try:
             if hasattr(tool_fn, "ainvoke"):
-                output = await tool_fn.ainvoke(args)
+                output = await tool_fn.ainvoke(args, config=config)
             else:
-                output = tool_fn.invoke(args)
+                output = tool_fn.invoke(args, config=config)
         except Exception as err:
             logger.error(f"Execution error in tool '{call_name}': {err}")
             output = {"error": f"Execution failed: {str(err)}"}

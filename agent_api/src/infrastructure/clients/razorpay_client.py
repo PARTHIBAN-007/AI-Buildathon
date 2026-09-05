@@ -20,33 +20,60 @@ class RazorpayClient:
         if not self.api_key or not self.key_secret:
             raise RuntimeError("RAZORPAY_API_KEY and RAZORPAY_KEY_SECRET must be configured")
         self.base = "https://api.razorpay.com/v1"
-        self._client = httpx.AsyncClient(auth=(self.api_key, self.key_secret),timeout=15.0)
-        
-    async def create_order(self, amount_in_inr: int, receipt: str | None = None) -> Dict[str, Any]:
+        self._client = httpx.AsyncClient(auth=(self.api_key, self.key_secret), timeout=15.0)
+
+    async def create_order(
+        self,
+        amount_in_inr: int,
+        receipt: str | None = None,
+        customer: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
         if amount_in_inr <= 0:
             raise ValueError("amount_in_inr must be greater than zero")
         payload = {"amount": int(amount_in_inr) * 100, "currency": "INR", "payment_capture": 1}
         if receipt:
             payload["receipt"] = receipt
+        if customer:
+            payload["notes"] = {
+                "customer_name": customer.get("name") or "",
+                "customer_email": customer.get("email") or "",
+            }
         url = f"{self.base}/orders"
         resp = await self._client.post(url, json=payload)
         resp.raise_for_status()
         return resp.json()
 
-    async def create_payment_link(self, amount_in_inr: int, description: str | None = None, customer: Dict | None = None) -> Dict[str, Any]:
+    async def create_payment_link(
+        self,
+        amount_in_inr: int,
+        description: str | None = None,
+        customer: Dict[str, Any] | None = None,
+        notes: Dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Creates a payment link on Razorpay with customer and notes metadata support."""
         if amount_in_inr <= 0:
             raise ValueError("amount_in_inr must be greater than zero")
-        payload: Dict[str, Any] = {"amount": int(amount_in_inr) * 100, "currency": "INR", "accept_partial": False}
+        payload: Dict[str, Any] = {
+            "amount": int(amount_in_inr) * 100,
+            "currency": "INR",
+            "accept_partial": False,
+        }
         if description:
             payload["description"] = description
         if customer:
             payload["customer"] = customer
+        if notes:
+            payload["notes"] = notes
+
         url = f"{self.base}/payment_links"
         resp = await self._client.post(url, json=payload)
         resp.raise_for_status()
         return resp.json()
 
-    def verify_payment_signature(self, razorpay_order_id: str, razorpay_payment_id: str, razorpay_signature: str) -> bool:
+    def verify_payment_signature(
+        self, razorpay_order_id: str, razorpay_payment_id: str, razorpay_signature: str
+    ) -> bool:
         if not (razorpay_order_id and razorpay_payment_id and razorpay_signature):
             raise ValueError("order_id, payment_id and signature are required")
         message = f"{razorpay_order_id}|{razorpay_payment_id}".encode("utf-8")

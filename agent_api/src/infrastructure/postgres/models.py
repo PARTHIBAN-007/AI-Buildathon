@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Column, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -20,6 +20,8 @@ class Checkout(Base):
     total_amount = Column(Numeric(10, 2), nullable=False)
     status = Column(String(50), default="PENDING", index=True)  # PENDING, PAID, FAILED, CANCELLED
     discount_offered = Column(Numeric(5, 2), default=0.0)
+    call_attempt_count = Column(Integer, default=0)
+    last_call_triggered_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime(timezone=True),

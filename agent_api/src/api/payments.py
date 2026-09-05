@@ -55,8 +55,14 @@ async def create_order(payload: CreateOrderRequest):
     service = PaymentService()
     settings = get_settings()
     try:
-        logger.info(f"Creating Razorpay order for amount={payload.amount_in_inr} receipt={payload.receipt}")
-        order = await service.create_order(amount_in_inr=payload.amount_in_inr, receipt=payload.receipt)
+        logger.info(
+            f"Creating Razorpay order for amount={payload.amount_in_inr} receipt={payload.receipt} customer={payload.customer}"
+        )
+        order = await service.create_order(
+            amount_in_inr=payload.amount_in_inr,
+            receipt=payload.receipt,
+            customer=payload.customer,
+        )
         # return order info to UI (order.id, amount, currency etc.) and include publishable key
         key_id = getattr(settings, "RAZORPAY_API_KEY", None)
         return {"status": "ok", "key_id": key_id, "order": order}

@@ -43,5 +43,4 @@ async def whatsapp_inbound(request: Request, background_tasks: BackgroundTasks) 
     except Exception as e:
         logger.error(f"Error parsing WhatsApp inbound webhook payload: {e}")
 
-    # Respond immediately to acknowledge receipt
     return Response(status_code=200)

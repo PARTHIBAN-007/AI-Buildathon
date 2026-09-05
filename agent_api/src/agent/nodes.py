@@ -126,10 +126,20 @@ async def chat_node(state: AgentState) -> dict[str, Any]:
 
     formatted_messages = [_format_msg_for_llm(m) for m in messages]
 
+    customer_name = context.get('customer_name') or 'Customer'
+    dynamic_system_prompt = SYSTEM_PROMPT.format(
+        customer_name=customer_name,
+        company_name='VectorTech',
+        customer_phone=context.get('customer_phone', 'N/A'),
+        amount_in_inr=context.get('amount_inr', 0),
+        order_id=context.get('order_id', 'N/A'),
+        failure_reason=context.get('failure_reason', 'N/A'),
+    )
     dynamic_system_prompt = (
-        f"{SYSTEM_PROMPT}\n\n"
+        f"{dynamic_system_prompt}\n\n"
         f"CURRENT TRANSACTION CONTEXT:\n"
         f"- Active Order ID: {context.get('order_id', 'N/A')}\n"
+        f"- Customer Name: {customer_name}\n"
         f"- Customer Phone: {context.get('customer_phone', 'N/A')}\n"
         f"- Order Amount: ₹{context.get('amount_inr', 0)}\n"
         f"- Failure Reason: {context.get('failure_reason', 'N/A')}\n"
